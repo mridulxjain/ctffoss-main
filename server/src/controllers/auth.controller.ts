@@ -5,16 +5,20 @@ import { config } from '../config/index';
 import { oidcService } from '../services/oidc.service';
 import { DEV_TEAMS, DEV_PARTICIPANTS, DEV_ADMIN, LEGACY_TEST_ACCOUNTS } from '../fixtures/devRoster';
 
+function isProductionEnv(): boolean {
+  return config.nodeEnv === 'production' || !!process.env.VERCEL;
+}
+
 function getSessionCookieName(): string {
-  return config.isDev ? 'foss_session' : '__Host-foss_session';
+  return !isProductionEnv() ? 'foss_session' : '__Host-foss_session';
 }
 
 function getOidcTxCookieName(): string {
-  return config.isDev ? 'oidc_tx' : '__Host-oidc_tx';
+  return !isProductionEnv() ? 'oidc_tx' : '__Host-oidc_tx';
 }
 
 function getSessionCookieOptions(maxAge?: number) {
-  const isSecure = config.nodeEnv === 'production' || config.cookieSameSite === 'none';
+  const isSecure = isProductionEnv() || config.cookieSameSite === 'none';
   return {
     httpOnly: true,
     secure: isSecure,
@@ -25,7 +29,7 @@ function getSessionCookieOptions(maxAge?: number) {
 }
 
 function getOidcTxCookieOptions(maxAge: number = 15 * 60 * 1000) {
-  const isProd = config.nodeEnv === 'production';
+  const isProd = isProductionEnv();
   return {
     httpOnly: true,
     secure: isProd || config.cookieSameSite === 'none',
@@ -118,9 +122,20 @@ export const authController = {
 
     try {
       // Reconstruct callback URL
-      const host = req.get('host') || 'localhost:4000';
-      const protocol = req.protocol || 'http';
-      const callbackUrl = new URL(req.originalUrl || req.url, `${protocol}://${host}`);
+      // Strictly use config.oidcRedirectUri as the base origin and path to guarantee that the redirect_uri
+      // sent during token exchange matches the exact registered redirect_uri required by the OIDC provider,
+      // preventing host mismatch issues when running behind Vercel serverless reverse proxy rewrites.
+      let callbackUrl: URL;
+      try {
+        const baseRedirect = new URL(config.oidcRedirectUri);
+        const incomingUrl = new URL(req.originalUrl || req.url, 'http://localhost');
+        callbackUrl = new URL(baseRedirect.pathname, baseRedirect.origin);
+        callbackUrl.search = incomingUrl.search;
+      } catch {
+        const host = req.get('x-forwarded-host') || req.get('host') || 'localhost:4000';
+        const protocol = req.protocol || 'https';
+        callbackUrl = new URL(req.originalUrl || req.url, `${protocol}://${host}`);
+      }
 
       const claims = await oidcService.processCallback({
         callbackUrl,
