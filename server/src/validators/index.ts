@@ -2,8 +2,9 @@ import { z } from 'zod';
 
 export const devLoginSchema = z.object({
   role: z.enum(['USER', 'ADMIN']).optional(),
-  username: z.string().min(2).max(30).optional(),
+  username: z.string().min(2).max(50).optional(),
   email: z.string().email().optional(),
+  userId: z.string().optional(),
 });
 
 export const flagSubmissionSchema = z.object({
@@ -105,6 +106,7 @@ export const updateCompetitionConfigSchema = z
       ])
       .optional(),
     isPaused: z.boolean().optional(),
+    state: z.enum(['DRAFT', 'PREPARING', 'SCHEDULED', 'LIVE', 'ENDED', 'PAUSED']).optional(),
   })
   .refine(
     (data) => {
@@ -118,4 +120,9 @@ export const updateCompetitionConfigSchema = z
       path: ['endTime'],
     }
   );
+
+export const setTeamReadinessSchema = z.object({
+  isReady: z.boolean({ required_error: 'isReady boolean flag is required' }),
+});
+
 

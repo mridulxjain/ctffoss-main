@@ -1,1248 +1,549 @@
 import React, { useState, useEffect } from 'react';
-import { api, ApiError } from '../lib/api';
+import { Navigate } from 'react-router-dom';
+import { api } from '../lib/api';
 import { useAuth } from '../context/AuthContext';
 import type {
-  AdminChallengeDTO,
-  CategoryDTO,
   CompetitionConfigDTO,
-  Difficulty,
-  CreateChallengeRequest,
-  UpdateChallengeRequest,
+  CompetitionReadinessSummaryDTO,
+  AdminTeamListItemDTO,
 } from '@fossctf/shared';
 import {
   Shield,
-  Plus,
-  KeyRound,
-  Edit2,
-  Archive,
-  Eye,
-  EyeOff,
-  Trash2,
-  Calendar,
-  Clock,
-  AlertTriangle,
-  CheckCircle2,
-  Search,
+  Play,
+  ExternalLink,
+  Copy,
+  Zap,
   RefreshCw,
+  CheckCircle2,
+  AlertTriangle,
+  Clock,
+  Users,
+  Edit2,
+  Check,
   X,
-  Radio,
-  Sliders,
+  Pause,
+  RotateCcw,
 } from 'lucide-react';
 
 export const AdminChallengesPage: React.FC = () => {
   const { user } = useAuth();
 
-  // Active view tab
-  const [activeTab, setActiveTab] = useState<'challenges' | 'competition'>('challenges');
+  // Strict client-side Admin protection: if user is not admin, immediately boot them to /challenges
+  if (user && user.role !== 'ADMIN') {
+    return <Navigate to="/challenges" replace />;
+  }
 
-  // Challenge state
-  const [challenges, setChallenges] = useState<AdminChallengeDTO[]>([]);
-  const [categories, setCategories] = useState<CategoryDTO[]>([]);
-  const [loadingChallenges, setLoadingChallenges] = useState(false);
-  const [filterStatus, setFilterStatus] = useState<'ALL' | 'PUBLISHED' | 'DRAFT' | 'ARCHIVED'>('ALL');
-  const [searchQuery, setSearchQuery] = useState('');
-
-  // Competition state
+  // State
   const [competition, setCompetition] = useState<CompetitionConfigDTO | null>(null);
-  const [compTitle, setCompTitle] = useState('');
-  const [compDesc, setCompDesc] = useState('');
-  const [compStart, setCompStart] = useState('');
-  const [compEnd, setCompEnd] = useState('');
-  const [compPaused, setCompPaused] = useState(false);
-  const [savingComp, setSavingComp] = useState(false);
-  const [compMessage, setCompMessage] = useState<{ text: string; isError: boolean } | null>(null);
+  const [readiness, setReadiness] = useState<CompetitionReadinessSummaryDTO | null>(null);
+  const [teams, setTeams] = useState<AdminTeamListItemDTO[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [copiedUrl, setCopiedUrl] = useState(false);
 
-  // Modals state
-  const [isCreateOpen, setIsCreateOpen] = useState(false);
-  const [editingChallenge, setEditingChallenge] = useState<AdminChallengeDTO | null>(null);
-  const [rotatingChallenge, setRotatingChallenge] = useState<AdminChallengeDTO | null>(null);
+  // Action states
+  const [startingCompetition, setStartingCompetition] = useState(false);
+  const [resettingCompetition, setResettingCompetition] = useState(false);
+  const [pausingCompetition, setPausingCompetition] = useState(false);
   const [actionFeedback, setActionFeedback] = useState<{ text: string; isError: boolean } | null>(null);
 
-  // Form states
-  const [formTitle, setFormTitle] = useState('');
-  const [formSlug, setFormSlug] = useState('');
-  const [formDesc, setFormDesc] = useState('');
-  const [formCatId, setFormCatId] = useState('');
-  const [formDiff, setFormDiff] = useState<Difficulty>('EASY');
-  const [formPoints, setFormPoints] = useState<number>(100);
-  const [formIsTimed, setFormIsTimed] = useState(false);
-  const [formDuration, setFormDuration] = useState<number>(30);
-  const [formFlag, setFormFlag] = useState('');
-  const [formPublishImmediately, setFormPublishImmediately] = useState(false);
-  const [submittingModal, setSubmittingModal] = useState(false);
-  const [modalError, setModalError] = useState<string | null>(null);
+  // Inline team Loventia ID editing
+  const [editingTeamId, setEditingTeamId] = useState<string | null>(null);
+  const [editValenfindId, setEditValenfindId] = useState('');
+  const [savingTeamId, setSavingTeamId] = useState<string | null>(null);
 
-  // Rotate Flag form state
-  const [newFlagValue, setNewFlagValue] = useState('');
-  const [rotatingFlag, setRotatingFlag] = useState(false);
-  const [rotateError, setRotateError] = useState<string | null>(null);
+  const targetUrl = 'https://ctffoss.vercel.app';
+  const isCompStarted = competition?.state === 'LIVE' || competition?.state === 'ENDED';
 
-  // Fetch all initial data
-  const fetchChallenges = async () => {
+  const fetchData = async () => {
     try {
-      setLoadingChallenges(true);
-      const [chalData, catData] = await Promise.all([
-        api.get('/admin/challenges'),
-        api.get('/challenges').catch(() => ({ categories: [] })),
+      const [compRes, readyRes, teamsRes] = await Promise.all([
+        api.get('/competition').catch(() => null),
+        api.get('/competition/readiness').catch(() => null),
+        api.get('/admin/teams').catch(() => []),
       ]);
-      setChallenges(chalData.challenges || []);
-      setCategories(catData.categories || []);
-    } catch (err: any) {
-      setActionFeedback({ text: err.message || 'Failed to load challenges.', isError: true });
+      setCompetition(compRes);
+      setReadiness(readyRes);
+      setTeams(teamsRes || []);
+    } catch (err) {
+      console.error('Failed to load admin telemetry:', err);
     } finally {
-      setLoadingChallenges(false);
-    }
-  };
-
-  const fetchCompetition = async () => {
-    try {
-      const data = await api.get('/admin/competition');
-      const cfg = data.config as CompetitionConfigDTO;
-      setCompetition(cfg);
-      setCompTitle(cfg.title || '');
-      setCompDesc(cfg.description || '');
-      setCompStart(cfg.startTime ? formatForInput(cfg.startTime) : '');
-      setCompEnd(cfg.endTime ? formatForInput(cfg.endTime) : '');
-      setCompPaused(cfg.isPaused || false);
-    } catch (err: any) {
-      console.error(err);
+      setLoading(false);
     }
   };
 
   useEffect(() => {
-    if (user?.role === 'ADMIN') {
-      fetchChallenges();
-      fetchCompetition();
-    }
-  }, [user?.role]);
+    fetchData();
+    const interval = setInterval(fetchData, 6000);
+    return () => clearInterval(interval);
+  }, []);
 
-  const formatForInput = (isoString: string) => {
+  const handleCopyUrl = async () => {
     try {
-      const date = new Date(isoString);
-      const pad = (n: number) => n.toString().padStart(2, '0');
-      const yyyy = date.getFullYear();
-      const mm = pad(date.getMonth() + 1);
-      const dd = pad(date.getDate());
-      const hh = pad(date.getHours());
-      const min = pad(date.getMinutes());
-      return `${yyyy}-${mm}-${dd}T${hh}:${min}`;
+      await navigator.clipboard.writeText(targetUrl);
+      setCopiedUrl(true);
+      setTimeout(() => setCopiedUrl(false), 2000);
     } catch {
-      return '';
+      // ignore clipboard error
     }
   };
 
-  const showNotification = (text: string, isError = false) => {
-    setActionFeedback({ text, isError });
-    setTimeout(() => {
-      setActionFeedback(null);
-    }, 4500);
-  };
-
-  // Handle Competition Save
-  const handleSaveCompetition = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setCompMessage(null);
-
-    // Validation
-    if (compStart && compEnd) {
-      const startDate = new Date(compStart);
-      const endDate = new Date(compEnd);
-      if (endDate <= startDate) {
-        setCompMessage({ text: 'Scheduled end time must be after scheduled start time.', isError: true });
-        return;
-      }
+  // FORCE START: Admin can start the competition at any second — readiness checks are bypassed!
+  const handleForceStart = async () => {
+    if (!window.confirm('⚡ Unlock Loventia and START the competition now?\n\nTarget will immediately become active for all participants without requiring squad readiness.')) {
+      return;
     }
-
+    setStartingCompetition(true);
+    setActionFeedback(null);
     try {
-      setSavingComp(true);
-      const res = await api.put('/admin/competition', {
-        title: compTitle.trim(),
-        description: compDesc.trim(),
-        startTime: compStart ? new Date(compStart).toISOString() : null,
-        endTime: compEnd ? new Date(compEnd).toISOString() : null,
-        isPaused: compPaused,
+      const res = await api.post('/admin/competition/start', { force: true });
+      setActionFeedback({
+        text: res?.message || 'Competition started! Loventia target unlocked for all participants.',
+        isError: false,
       });
-      setCompetition(res.config);
-      setCompMessage({ text: 'Competition settings updated successfully.', isError: false });
+      await fetchData();
     } catch (err: any) {
-      setCompMessage({ text: err.message || 'Failed to update competition settings.', isError: true });
-    } finally {
-      setSavingComp(false);
-    }
-  };
-
-  // Open Create Modal
-  const openCreateModal = () => {
-    setFormTitle('');
-    setFormSlug('');
-    setFormDesc('');
-    setFormCatId(categories[0]?.id || '');
-    setFormDiff('EASY');
-    setFormPoints(100);
-    setFormIsTimed(false);
-    setFormDuration(30);
-    setFormFlag('');
-    setFormPublishImmediately(false);
-    setModalError(null);
-    setIsCreateOpen(true);
-  };
-
-  // Handle Create Challenge
-  const handleCreateChallenge = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setModalError(null);
-
-    if (!formTitle.trim()) {
-      setModalError('Challenge title is required.');
-      return;
-    }
-    if (!formDesc.trim()) {
-      setModalError('Description is required.');
-      return;
-    }
-    if (!formCatId) {
-      setModalError('Category is required.');
-      return;
-    }
-    if (!formFlag.trim()) {
-      setModalError('Flag is required for new challenge.');
-      return;
-    }
-
-    const payload: CreateChallengeRequest = {
-      title: formTitle.trim(),
-      slug: formSlug.trim() || undefined,
-      description: formDesc.trim(),
-      categoryId: formCatId,
-      difficulty: formDiff,
-      points: Number(formPoints),
-      flag: formFlag.trim(),
-      isTimed: formIsTimed,
-      durationMinutes: formIsTimed ? Number(formDuration) : null,
-      isPublished: formPublishImmediately,
-    };
-
-    try {
-      setSubmittingModal(true);
-      await api.post('/admin/challenges', payload);
-      setIsCreateOpen(false);
-      showNotification(`Challenge "${payload.title}" created successfully.`);
-      fetchChallenges();
-    } catch (err: any) {
-      setModalError(err.message || 'Failed to create challenge.');
-    } finally {
-      setSubmittingModal(false);
-    }
-  };
-
-  // Open Edit Modal
-  const openEditModal = (c: AdminChallengeDTO) => {
-    setEditingChallenge(c);
-    setFormTitle(c.title);
-    setFormSlug(c.slug);
-    setFormDesc(c.description);
-    setFormCatId(c.categoryId);
-    setFormDiff(c.difficulty);
-    setFormPoints(c.points);
-    setFormIsTimed(c.isTimed);
-    setFormDuration(c.durationMinutes || 30);
-    setModalError(null);
-  };
-
-  // Handle Edit Challenge
-  const handleUpdateChallenge = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!editingChallenge) return;
-    setModalError(null);
-
-    const payload: UpdateChallengeRequest = {
-      title: formTitle.trim(),
-      slug: formSlug.trim() || undefined,
-      description: formDesc.trim(),
-      categoryId: formCatId,
-      difficulty: formDiff,
-      points: Number(formPoints),
-      isTimed: formIsTimed,
-      durationMinutes: formIsTimed ? Number(formDuration) : null,
-    };
-
-    try {
-      setSubmittingModal(true);
-      await api.patch(`/admin/challenges/${editingChallenge.id}`, payload);
-      setEditingChallenge(null);
-      showNotification(`Challenge "${payload.title}" updated successfully.`);
-      fetchChallenges();
-    } catch (err: any) {
-      setModalError(err.message || 'Failed to update challenge metadata.');
-    } finally {
-      setSubmittingModal(false);
-    }
-  };
-
-  // Open Rotate Flag Modal
-  const openRotateFlagModal = (c: AdminChallengeDTO) => {
-    setRotatingChallenge(c);
-    setNewFlagValue('');
-    setRotateError(null);
-  };
-
-  // Handle Rotate Flag
-  const handleRotateFlag = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!rotatingChallenge) return;
-    setRotateError(null);
-
-    if (!newFlagValue.trim()) {
-      setRotateError('New flag value cannot be empty.');
-      return;
-    }
-
-    try {
-      setRotatingFlag(true);
-      await api.post(`/admin/challenges/${rotatingChallenge.id}/flag`, {
-        flag: newFlagValue.trim(),
+      setActionFeedback({
+        text: err.message || 'Failed to start competition.',
+        isError: true,
       });
-      setRotatingChallenge(null);
-      showNotification(`Flag rotated successfully for "${rotatingChallenge.title}". Existing solves remain intact.`);
-      fetchChallenges();
-    } catch (err: any) {
-      setRotateError(err.message || 'Failed to update flag.');
     } finally {
-      setRotatingFlag(false);
+      setStartingCompetition(false);
     }
   };
 
-  // Lifecycle toggles
-  const handlePublish = async (c: AdminChallengeDTO) => {
-    try {
-      await api.post(`/admin/challenges/${c.id}/publish`);
-      showNotification(`Published "${c.title}". Challenge is now live for participants.`);
-      fetchChallenges();
-    } catch (err: any) {
-      showNotification(err.message || 'Failed to publish challenge.', true);
-    }
-  };
-
-  const handleUnpublish = async (c: AdminChallengeDTO) => {
-    try {
-      await api.post(`/admin/challenges/${c.id}/unpublish`);
-      showNotification(`Unpublished "${c.title}". Challenge is now hidden as draft.`);
-      fetchChallenges();
-    } catch (err: any) {
-      showNotification(err.message || 'Failed to unpublish challenge.', true);
-    }
-  };
-
-  const handleArchive = async (c: AdminChallengeDTO) => {
-    if (!confirm(`Are you sure you want to archive "${c.title}"? Submissions will be closed, but existing solves and points remain intact.`)) {
+  // Reset competition state back to PREPARING
+  const handleResetToPreparing = async () => {
+    if (!window.confirm('Reset competition back to PREPARING state?\n\nThis will lock the participant target gate again until you start it.')) {
       return;
     }
+    setResettingCompetition(true);
+    setActionFeedback(null);
     try {
-      await api.post(`/admin/challenges/${c.id}/archive`);
-      showNotification(`Archived "${c.title}". Solves preserved; submissions closed.`);
-      fetchChallenges();
+      await api.put('/admin/competition', {
+        state: 'PREPARING',
+        isPaused: false,
+      });
+      setActionFeedback({
+        text: 'Competition reset to PREPARING state.',
+        isError: false,
+      });
+      await fetchData();
     } catch (err: any) {
-      showNotification(err.message || 'Failed to archive challenge.', true);
+      setActionFeedback({
+        text: err.message || 'Failed to reset competition.',
+        isError: true,
+      });
+    } finally {
+      setResettingCompetition(false);
     }
   };
 
-  const handleDelete = async (c: AdminChallengeDTO) => {
-    if (!confirm(`Are you sure you want to permanently delete "${c.title}"? This cannot be undone.`)) {
-      return;
-    }
+  // Toggle pause
+  const handleTogglePause = async () => {
+    const nextPaused = !competition?.isPaused;
+    setPausingCompetition(true);
+    setActionFeedback(null);
     try {
-      await api.delete(`/admin/challenges/${c.id}`);
-      showNotification(`Deleted challenge "${c.title}".`);
-      fetchChallenges();
+      await api.put('/admin/competition', {
+        isPaused: nextPaused,
+      });
+      setActionFeedback({
+        text: nextPaused ? 'Competition PAUSED. Flag submissions temporarily frozen.' : 'Competition RESUMED.',
+        isError: false,
+      });
+      await fetchData();
     } catch (err: any) {
-      showNotification(err.message || 'Failed to delete challenge. Challenges with historical solves must be archived.', true);
+      setActionFeedback({
+        text: err.message || 'Failed to toggle pause state.',
+        isError: true,
+      });
+    } finally {
+      setPausingCompetition(false);
     }
   };
 
-  // Unauthorized guard
-  if (user?.role !== 'ADMIN') {
-    return (
-      <div className="max-w-2xl mx-auto px-4 py-16 text-center space-y-4">
-        <div className="w-12 h-12 rounded-full bg-rose-950/60 border border-rose-900/80 flex items-center justify-center text-rose-400 mx-auto">
-          <Shield className="w-6 h-6" />
-        </div>
-        <h1 className="text-lg font-semibold text-zinc-100">Access Restricted</h1>
-        <p className="text-xs text-zinc-400 max-w-md mx-auto leading-relaxed">
-          Competition administration requires authoritative platform admin privileges. Use the test account switcher in the top navigation to select Platform Admin for local administrative verification.
-        </p>
-      </div>
-    );
-  }
+  // Save team Loventia mapping
+  const handleSaveTeamMapping = async (teamId: string) => {
+    try {
+      setSavingTeamId(teamId);
+      const cleanValenfindId = editValenfindId.trim() || null;
+      await api.put(`/admin/teams/${teamId}/valenfind-mapping`, {
+        valenfindTeamId: cleanValenfindId,
+      });
 
-  // Filter challenges
-  const filteredChallenges = challenges.filter((c) => {
-    const matchesFilter =
-      filterStatus === 'ALL'
-        ? true
-        : filterStatus === 'PUBLISHED'
-        ? c.isPublished && !c.isArchived
-        : filterStatus === 'DRAFT'
-        ? !c.isPublished && !c.isArchived
-        : c.isArchived;
+      setTeams((prev) =>
+        prev.map((t) => (t.id === teamId ? { ...t, valenfindTeamId: cleanValenfindId } : t))
+      );
+      setEditingTeamId(null);
+      setEditValenfindId('');
+      setActionFeedback({
+        text: 'Team Loventia voucher ID updated successfully.',
+        isError: false,
+      });
+    } catch (err: any) {
+      setActionFeedback({
+        text: err.message || 'Failed to update Loventia voucher mapping.',
+        isError: true,
+      });
+    } finally {
+      setSavingTeamId(null);
+    }
+  };
 
-    const matchesSearch =
-      searchQuery.trim() === '' ||
-      c.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      (c.categoryName && c.categoryName.toLowerCase().includes(searchQuery.toLowerCase())) ||
-      c.slug.toLowerCase().includes(searchQuery.toLowerCase());
-
-    return matchesFilter && matchesSearch;
-  });
+  const isLive = competition?.state === 'LIVE';
+  const isPreparing = competition?.state === 'PREPARING';
 
   return (
-    <div className="max-w-6xl mx-auto px-4 sm:px-6 py-8 space-y-6">
-      {/* Page Header */}
-      <div className="flex flex-col sm:flex-row sm:items-baseline justify-between gap-4 border-b border-zinc-800 pb-5">
-        <div>
-          <div className="flex items-center gap-2">
-            <h1 className="text-xl font-semibold tracking-tight text-zinc-100">
-              Competition Administration
-            </h1>
-            <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-emerald-950/60 text-emerald-400 border border-emerald-900/60 font-semibold uppercase">
-              Admin Portal
-            </span>
-          </div>
-          <p className="text-xs text-zinc-400 mt-0.5">
-            Manage challenge authoring, secret flags, lifecycle states, and scheduled competition time windows.
-          </p>
+    <div className="max-w-5xl mx-auto px-4 sm:px-6 py-8 space-y-8">
+      {/* Top Section Indicator with stickers */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b-2 border-zinc-800 pb-4">
+        <div className="flex items-center gap-2 font-mono text-xs text-zinc-400 uppercase tracking-widest">
+          <span className="text-emerald-400 font-bold">&gt;_ ADMIN TERMINAL</span>
+          <span className="text-zinc-600">//</span>
+          <span>§ 01 &middot; MISSION CONTROL</span>
+          <span className="text-zinc-600">//</span>
+          <span className="text-amber-400 font-bold">LOVENTIA ONLY</span>
         </div>
 
-        {/* Global Notification */}
-        {actionFeedback && (
-          <div
-            className={`px-3 py-1.5 rounded-md text-xs border flex items-center gap-2 ${
-              actionFeedback.isError
-                ? 'bg-rose-950/60 border-rose-900/80 text-rose-300'
-                : 'bg-emerald-950/60 border-emerald-900/80 text-emerald-300'
-            }`}
-          >
+        <div className="flex items-center gap-2 flex-wrap">
+          <div className="sticker-tape bg-amber-400 text-black border border-black shadow-[2px_2px_0px_#000]">
+            CLEARANCE: ROOT
+          </div>
+          <div className="sticker-tape-right bg-emerald-400 text-black border border-black shadow-[2px_2px_0px_#000]">
+            TARGET: ONLINE
+          </div>
+        </div>
+      </div>
+
+      {/* Main Page Title Header */}
+      <div className="space-y-2">
+        <div className="flex items-center gap-3">
+          <h1 className="text-3xl sm:text-4xl font-black font-mono tracking-tight text-zinc-100 uppercase">
+            Loventia Mission Control
+          </h1>
+        </div>
+        <p className="text-sm font-mono text-zinc-400 max-w-2xl">
+          Live competition launch gate and target monitoring for the Loventia voucher breach.
+          Admin can launch the target or force-start the round anytime.
+        </p>
+      </div>
+
+      {/* Feedback Banner */}
+      {actionFeedback && (
+        <div
+          className={`p-4 rounded-none border-2 font-mono text-xs flex items-center justify-between gap-3 ${
+            actionFeedback.isError
+              ? 'bg-rose-950/40 border-rose-500 text-rose-300 shadow-[3px_3px_0px_#f43f5e]'
+              : 'bg-emerald-950/40 border-emerald-500 text-emerald-300 shadow-[3px_3px_0px_#10b981]'
+          }`}
+        >
+          <div className="flex items-center gap-2">
             {actionFeedback.isError ? (
-              <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
+              <AlertTriangle className="w-4 h-4 shrink-0 text-rose-400" />
             ) : (
-              <CheckCircle2 className="w-3.5 h-3.5 shrink-0" />
+              <CheckCircle2 className="w-4 h-4 shrink-0 text-emerald-400" />
             )}
             <span>{actionFeedback.text}</span>
           </div>
-        )}
-      </div>
+          <button
+            onClick={() => setActionFeedback(null)}
+            className="text-zinc-400 hover:text-zinc-100 font-mono text-xs"
+          >
+            [CLOSE]
+          </button>
+        </div>
+      )}
 
-      {/* Tabs */}
-      <div className="flex items-center gap-2 border-b border-zinc-800">
-        <button
-          onClick={() => setActiveTab('challenges')}
-          className={`px-4 py-2 text-xs font-medium border-b-2 transition-colors ${
-            activeTab === 'challenges'
-              ? 'border-emerald-500 text-zinc-100'
-              : 'border-transparent text-zinc-400 hover:text-zinc-200'
-          }`}
-        >
-          Challenge Catalog ({challenges.length})
-        </button>
-        <button
-          onClick={() => setActiveTab('competition')}
-          className={`px-4 py-2 text-xs font-medium border-b-2 flex items-center gap-2 transition-colors ${
-            activeTab === 'competition'
-              ? 'border-emerald-500 text-zinc-100'
-              : 'border-transparent text-zinc-400 hover:text-zinc-200'
-          }`}
-        >
-          <span>Competition Schedule & Settings</span>
-          {competition && (
-            <span
-              className={`text-[9px] font-mono px-1.5 py-0.2 rounded uppercase ${
-                competition.state === 'LIVE'
-                  ? 'bg-emerald-900/60 text-emerald-300 border border-emerald-700/60'
-                  : competition.state === 'SCHEDULED'
-                  ? 'bg-amber-900/60 text-amber-300 border border-amber-700/60'
-                  : 'bg-zinc-800 text-zinc-400 border border-zinc-700'
-              }`}
-            >
-              {competition.state}
-            </span>
-          )}
-        </button>
-      </div>
-
-      {/* TAB 1: CHALLENGES */}
-      {activeTab === 'challenges' && (
-        <div className="space-y-4">
-          {/* Controls Bar */}
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-            {/* Status Filters */}
-            <div className="flex items-center gap-1.5 overflow-x-auto pb-1">
-              {(['ALL', 'PUBLISHED', 'DRAFT', 'ARCHIVED'] as const).map((st) => (
-                <button
-                  key={st}
-                  onClick={() => setFilterStatus(st)}
-                  className={`px-3 py-1 rounded-md text-xs font-medium transition-colors ${
-                    filterStatus === st
-                      ? 'bg-zinc-800 text-zinc-100 border border-zinc-700'
-                      : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-900 border border-transparent'
-                  }`}
-                >
-                  {st.charAt(0) + st.slice(1).toLowerCase()}
-                </button>
-              ))}
-            </div>
-
-            {/* Right: Search & Create Action */}
+      {/* SECTION 1: THE TARGET COMMAND BOX */}
+      <section className="tech-corner-box border-2 border-emerald-500 bg-zinc-950 p-6 sm:p-7 shadow-[5px_5px_0px_#10b981] space-y-5">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-zinc-800 pb-4">
+          <div className="space-y-1">
             <div className="flex items-center gap-2">
-              <div className="relative">
-                <Search className="w-3.5 h-3.5 text-zinc-500 absolute left-2.5 top-1/2 -translate-y-1/2" />
-                <input
-                  type="text"
-                  placeholder="Search challenges..."
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className="pl-8 pr-3 py-1.5 rounded-md bg-zinc-900/70 border border-zinc-800 text-xs text-zinc-200 placeholder-zinc-500 focus:outline-none focus:border-zinc-700 w-44 sm:w-56"
-                />
-              </div>
+              <span className="text-xs font-mono font-bold text-emerald-400 uppercase tracking-wider">
+                § 01 &middot; TARGET SYSTEM DEPLOYMENT
+              </span>
+              <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-emerald-950 text-emerald-300 border border-emerald-800 font-bold">
+                PERMANENT ACCESS
+              </span>
+            </div>
+            <h2 className="text-lg font-bold font-mono text-zinc-100">
+              Loventia Production Instance
+            </h2>
+          </div>
 
-              <button
-                onClick={openCreateModal}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-emerald-600 hover:bg-emerald-500 text-white font-medium text-xs transition-colors shrink-0"
-              >
-                <Plus className="w-3.5 h-3.5" />
-                <span>New Challenge</span>
-              </button>
+          <div className="flex items-center gap-2">
+            <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse" />
+            <span className="text-xs font-mono font-bold text-emerald-400 uppercase">
+              Target Reachable
+            </span>
+          </div>
+        </div>
+
+        {/* Target URL Display & Actions */}
+        <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-4 p-4 bg-zinc-900/90 border-2 border-zinc-800">
+          <div className="space-y-1 min-w-0">
+            <span className="text-[10px] font-mono uppercase text-zinc-500 block">
+              Official Target Application URL:
+            </span>
+            <div className="font-mono text-sm sm:text-base font-bold text-emerald-300 truncate select-all">
+              {targetUrl}
             </div>
           </div>
 
-          {/* Challenges Table */}
-          {loadingChallenges ? (
-            <div className="py-16 text-center text-xs font-mono text-zinc-500">
-              Loading challenge catalog...
+          <div className="flex items-center gap-2.5 shrink-0">
+            <button
+              onClick={handleCopyUrl}
+              className="px-3.5 py-2.5 text-xs font-mono font-bold uppercase transition-all bg-zinc-800 hover:bg-zinc-700 text-zinc-200 border-2 border-zinc-700 flex items-center gap-1.5 shadow-[2px_2px_0px_#000]"
+            >
+              {copiedUrl ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
+              <span>{copiedUrl ? 'Copied!' : 'Copy URL'}</span>
+            </button>
+
+            <a
+              href={targetUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="px-4 py-2.5 text-xs font-mono font-black uppercase transition-all bg-emerald-500 hover:bg-emerald-400 text-black border-2 border-emerald-400 flex items-center gap-2 shadow-[3px_3px_0px_#000] hover:shadow-[4px_4px_0px_#000] hover:-translate-x-0.5 hover:-translate-y-0.5"
+            >
+              <ExternalLink className="w-4 h-4" />
+              <span>Launch Target ↗</span>
+            </a>
+          </div>
+        </div>
+
+        <p className="text-xs font-mono text-zinc-400">
+          Target link is permanently unlocked for administrators. Participants unlock the target automatically once the round starts.
+        </p>
+      </section>
+
+      {/* SECTION 2: COMPETITION START / LIFECYCLE GATE */}
+      <section className="tech-corner-box border-2 border-amber-500 bg-zinc-950 p-6 sm:p-7 shadow-[5px_5px_0px_#f59e0b] space-y-6">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-zinc-800 pb-4">
+          <div className="space-y-1">
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-mono font-bold text-amber-400 uppercase tracking-wider">
+                § 02 &middot; COMPETITION LAUNCH GATE
+              </span>
+              <span
+                className={`text-[10px] font-mono px-2 py-0.5 font-bold uppercase border ${
+                  isLive
+                    ? 'bg-emerald-950 text-emerald-300 border-emerald-700'
+                    : isPreparing
+                    ? 'bg-amber-950 text-amber-300 border-amber-700'
+                    : 'bg-zinc-800 text-zinc-300 border-zinc-700'
+                }`}
+              >
+                {competition?.state || 'PREPARING'}
+              </span>
             </div>
-          ) : filteredChallenges.length === 0 ? (
-            <div className="rounded-lg border border-zinc-800 bg-zinc-900/20 p-12 text-center space-y-2">
-              <p className="text-sm font-medium text-zinc-300">No challenges found</p>
-              <p className="text-xs text-zinc-500 max-w-sm mx-auto">
-                {searchQuery || filterStatus !== 'ALL'
-                  ? 'No challenges match your current filter criteria.'
-                  : 'Get started by creating your first competition challenge.'}
-              </p>
+            <h2 className="text-lg font-bold font-mono text-zinc-100">
+              Synchronized Launch Control
+            </h2>
+          </div>
+
+          {/* Readiness tally summary */}
+          <div className="text-xs font-mono text-zinc-400">
+            Squads Ready: <strong className="text-zinc-100">{readiness?.readyTeamsCount ?? 0}</strong> of{' '}
+            <strong className="text-zinc-100">{readiness?.totalEligibleTeams ?? 0}</strong>
+          </div>
+        </div>
+
+        {/* Dynamic State Control Actions */}
+        <div className="space-y-4">
+          {isPreparing ? (
+            <div className="p-5 bg-amber-950/20 border-2 border-amber-500/60 space-y-4">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                <div className="space-y-1">
+                  <div className="font-mono text-sm font-bold text-amber-300">
+                    Target Locked For Participants (PREPARING)
+                  </div>
+                  <p className="text-xs font-mono text-zinc-400 max-w-lg">
+                    Admin can start the round at any moment. Squad readiness check is completely bypassed when you force start.
+                  </p>
+                </div>
+
+                <button
+                  onClick={handleForceStart}
+                  disabled={startingCompetition}
+                  className="px-6 py-3.5 text-sm font-mono font-black uppercase tracking-wider bg-emerald-500 hover:bg-emerald-400 text-black border-2 border-emerald-400 shadow-[4px_4px_0px_#000] hover:shadow-[5px_5px_0px_#000] hover:-translate-x-0.5 hover:-translate-y-0.5 transition-all flex items-center justify-center gap-2.5 shrink-0 disabled:opacity-50"
+                >
+                  <Zap className="w-4 h-4 fill-black" />
+                  <span>{startingCompetition ? 'Starting Round...' : '⚡ FORCE START COMPETITION NOW'}</span>
+                </button>
+              </div>
             </div>
           ) : (
-            <div className="rounded-lg border border-zinc-800 bg-zinc-900/30 overflow-hidden">
-              <div className="overflow-x-auto">
-                <table className="w-full text-left text-xs">
-                  <thead className="bg-zinc-950 border-b border-zinc-800 text-zinc-400 font-medium">
-                    <tr>
-                      <th className="px-4 py-2.5">Title & Category</th>
-                      <th className="px-4 py-2.5">Difficulty</th>
-                      <th className="px-4 py-2.5 text-center">Points</th>
-                      <th className="px-4 py-2.5 text-center">Timing</th>
-                      <th className="px-4 py-2.5 text-center">Solves</th>
-                      <th className="px-4 py-2.5 text-center">Lifecycle</th>
-                      <th className="px-4 py-2.5 text-right">Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-zinc-800/60">
-                    {filteredChallenges.map((c) => {
-                      const isArchived = c.isArchived;
-                      const isPublished = c.isPublished && !isArchived;
-                      const isDraft = !c.isPublished && !isArchived;
+            <div className="p-5 bg-emerald-950/20 border-2 border-emerald-500/60 space-y-4">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                <div className="space-y-1">
+                  <div className="font-mono text-sm font-bold text-emerald-300 flex items-center gap-2">
+                    <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse" />
+                    <span>ROUND IS LIVE &middot; LOVENTIA UNLOCKED</span>
+                  </div>
+                  <p className="text-xs font-mono text-zinc-400">
+                    All participants can view the target link and submit flags. Elapsed timer is running.
+                  </p>
+                </div>
 
-                      return (
-                        <tr key={c.id} className="hover:bg-zinc-900/60 transition-colors">
-                          {/* Title & Category */}
-                          <td className="px-4 py-3">
-                            <div className="space-y-0.5">
-                              <span className="font-medium text-zinc-100 block">{c.title}</span>
-                              <div className="flex items-center gap-2 text-[11px] text-zinc-500">
-                                <span className="text-zinc-400">{c.categoryName || 'General'}</span>
-                                <span>·</span>
-                                <span className="font-mono text-[10px] text-zinc-600">/{c.slug}</span>
-                              </div>
-                            </div>
-                          </td>
+                <div className="flex items-center gap-2.5 shrink-0 flex-wrap">
+                  <button
+                    onClick={handleTogglePause}
+                    disabled={pausingCompetition}
+                    className="px-4 py-2.5 text-xs font-mono font-bold uppercase bg-zinc-800 hover:bg-zinc-700 text-amber-300 border-2 border-amber-500/50 flex items-center gap-1.5 shadow-[2px_2px_0px_#000] disabled:opacity-50"
+                  >
+                    <Pause className="w-3.5 h-3.5" />
+                    <span>{competition?.isPaused ? 'Resume Round' : 'Pause Round'}</span>
+                  </button>
 
-                          {/* Difficulty */}
-                          <td className="px-4 py-3">
-                            <span
-                              className={`text-[10px] font-mono px-2 py-0.5 rounded border uppercase ${
-                                c.difficulty === 'EASY'
-                                  ? 'text-emerald-400 bg-emerald-950/40 border-emerald-900/40'
-                                  : c.difficulty === 'MEDIUM'
-                                  ? 'text-amber-400 bg-amber-950/40 border-amber-900/40'
-                                  : 'text-rose-400 bg-rose-950/40 border-rose-900/40'
-                              }`}
-                            >
-                              {c.difficulty}
-                            </span>
-                          </td>
-
-                          {/* Points */}
-                          <td className="px-4 py-3 text-center font-mono font-medium text-zinc-200">
-                            {c.points}
-                          </td>
-
-                          {/* Timing */}
-                          <td className="px-4 py-3 text-center">
-                            {c.isTimed ? (
-                              <span className="inline-flex items-center gap-1 font-mono text-[11px] text-amber-400">
-                                <Clock className="w-3 h-3" />
-                                {c.durationMinutes}m
-                              </span>
-                            ) : (
-                              <span className="text-zinc-500 text-[11px]">Untimed</span>
-                            )}
-                          </td>
-
-                          {/* Solves */}
-                          <td className="px-4 py-3 text-center font-mono text-zinc-400">
-                            {c.solveCount}
-                          </td>
-
-                          {/* Lifecycle Status Pill */}
-                          <td className="px-4 py-3 text-center">
-                            {isPublished ? (
-                              <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-emerald-950/60 text-emerald-400 border border-emerald-800/60 uppercase">
-                                Published
-                              </span>
-                            ) : isArchived ? (
-                              <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-amber-950/60 text-amber-400 border border-amber-800/60 uppercase">
-                                Archived
-                              </span>
-                            ) : (
-                              <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-zinc-800 text-zinc-400 border border-zinc-700 uppercase">
-                                Draft
-                              </span>
-                            )}
-                          </td>
-
-                          {/* Action Buttons */}
-                          <td className="px-4 py-3 text-right">
-                            <div className="flex items-center justify-end gap-1">
-                              {/* Edit metadata */}
-                              <button
-                                onClick={() => openEditModal(c)}
-                                title="Edit metadata"
-                                className="p-1 rounded text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800 transition-colors"
-                              >
-                                <Edit2 className="w-3.5 h-3.5" />
-                              </button>
-
-                              {/* Rotate flag */}
-                              <button
-                                onClick={() => openRotateFlagModal(c)}
-                                title="Set / Rotate flag (preserves historical solves)"
-                                className="p-1 rounded text-zinc-400 hover:text-amber-400 hover:bg-zinc-800 transition-colors"
-                              >
-                                <KeyRound className="w-3.5 h-3.5" />
-                              </button>
-
-                              {/* Publish / Unpublish */}
-                              {isDraft && (
-                                <button
-                                  onClick={() => handlePublish(c)}
-                                  title="Publish challenge"
-                                  className="p-1 rounded text-zinc-400 hover:text-emerald-400 hover:bg-zinc-800 transition-colors"
-                                >
-                                  <Eye className="w-3.5 h-3.5" />
-                                </button>
-                              )}
-                              {isPublished && (
-                                <button
-                                  onClick={() => handleUnpublish(c)}
-                                  title="Unpublish (revert to draft)"
-                                  className="p-1 rounded text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800 transition-colors"
-                                >
-                                  <EyeOff className="w-3.5 h-3.5" />
-                                </button>
-                              )}
-
-                              {/* Archive */}
-                              {!isArchived && (
-                                <button
-                                  onClick={() => handleArchive(c)}
-                                  title="Archive challenge"
-                                  className="p-1 rounded text-zinc-400 hover:text-amber-400 hover:bg-zinc-800 transition-colors"
-                                >
-                                  <Archive className="w-3.5 h-3.5" />
-                                </button>
-                              )}
-
-                              {/* Delete (only available if 0 solves) */}
-                              {c.solveCount === 0 && (
-                                <button
-                                  onClick={() => handleDelete(c)}
-                                  title="Delete challenge"
-                                  className="p-1 rounded text-zinc-400 hover:text-rose-400 hover:bg-zinc-800 transition-colors"
-                                >
-                                  <Trash2 className="w-3.5 h-3.5" />
-                                </button>
-                              )}
-                            </div>
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
+                  <button
+                    onClick={handleResetToPreparing}
+                    disabled={resettingCompetition}
+                    className="px-4 py-2.5 text-xs font-mono font-bold uppercase bg-zinc-900 hover:bg-zinc-800 text-rose-300 border-2 border-rose-500/50 flex items-center gap-1.5 shadow-[2px_2px_0px_#000] disabled:opacity-50"
+                  >
+                    <RotateCcw className="w-3.5 h-3.5" />
+                    <span>Reset to Preparing</span>
+                  </button>
+                </div>
               </div>
             </div>
           )}
         </div>
-      )}
+      </section>
 
-      {/* TAB 2: COMPETITION SETTINGS */}
-      {activeTab === 'competition' && (
-        <div className="max-w-2xl space-y-6">
-          <div className="rounded-lg border border-zinc-800 bg-zinc-900/30 p-6 space-y-6">
-            <div>
-              <h2 className="text-sm font-semibold text-zinc-100">
-                Competition Lifecycle & Schedule
-              </h2>
-              <p className="text-xs text-zinc-400 mt-1">
-                Configure competition name, active time window, and server-enforced submission availability.
-              </p>
-            </div>
+      {/* SECTION 3: SQUAD ROSTER & LOVENTIA SECRETS MONITOR */}
+      <section className="tech-corner-box border-2 border-zinc-800 bg-zinc-950 p-6 sm:p-7 shadow-[5px_5px_0px_#27272a] space-y-5">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-zinc-800 pb-4">
+          <div className="space-y-1">
+            <span className="text-xs font-mono font-bold text-zinc-400 uppercase tracking-wider">
+              § 03 &middot; SQUAD TELEMETRY & VOUCHER MAPPINGS
+            </span>
+            <h2 className="text-lg font-bold font-mono text-zinc-100">
+              Participating Teams Monitor
+            </h2>
+          </div>
 
-            {/* Current Status Box */}
-            {competition && (
-              <div className="p-4 rounded-md bg-zinc-950 border border-zinc-800 flex items-center justify-between">
-                <div>
-                  <span className="text-[10px] font-mono uppercase tracking-wider text-zinc-500 block">
-                    Authoritative Server State
-                  </span>
-                  <div className="flex items-center gap-2 mt-1">
-                    <span
-                      className={`text-xs font-mono font-semibold px-2 py-0.5 rounded border uppercase ${
-                        competition.state === 'LIVE'
-                          ? 'bg-emerald-950/60 text-emerald-400 border-emerald-800/60'
-                          : competition.state === 'SCHEDULED'
-                          ? 'bg-amber-950/60 text-amber-300 border-amber-800/60'
-                          : competition.state === 'ENDED'
-                          ? 'bg-zinc-800 text-zinc-300 border-zinc-700'
-                          : 'bg-rose-950/60 text-rose-300 border-rose-800/60'
-                      }`}
-                    >
-                      {competition.state}
-                    </span>
-                    <span className="text-xs text-zinc-400">
-                      {competition.state === 'LIVE'
-                        ? 'Flag submissions accepted'
-                        : competition.state === 'SCHEDULED'
-                        ? 'Submissions locked until scheduled start'
-                        : competition.state === 'ENDED'
-                        ? 'Submissions locked (event ended)'
-                        : 'Submissions disabled'}
-                    </span>
-                  </div>
-                </div>
+          <div className="text-xs font-mono text-zinc-400">
+            Registered Squads: <strong className="text-emerald-400 font-bold">{teams.length}</strong>
+          </div>
+        </div>
 
-                <div className="text-right text-[11px] font-mono text-zinc-500">
-                  <div>Server Time:</div>
-                  <div className="text-zinc-300">
-                    {new Date(competition.serverTime).toLocaleTimeString()}
-                  </div>
-                </div>
-              </div>
-            )}
+        {/* Clean Squad Table */}
+        <div className="overflow-x-auto border-2 border-zinc-800">
+          <table className="w-full text-left font-mono text-xs">
+            <thead className="bg-zinc-900 border-b-2 border-zinc-800 text-zinc-400 uppercase text-[11px]">
+              <tr>
+                <th className="py-3 px-4">Squad Name</th>
+                <th className="py-3 px-4">Members</th>
+                <th className="py-3 px-4">Loventia Voucher Key</th>
+                <th className="py-3 px-4">Readiness</th>
+                <th className="py-3 px-4 text-right">Status</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-zinc-800 bg-zinc-950/60">
+              {teams.length === 0 ? (
+                <tr>
+                  <td colSpan={5} className="py-8 text-center text-zinc-500">
+                    No teams registered yet.
+                  </td>
+                </tr>
+              ) : (
+                teams.map((t) => {
+                  const isEditing = editingTeamId === t.id;
+                  const isReady = t.isReady;
 
-            {/* Form */}
-            <form onSubmit={handleSaveCompetition} className="space-y-4">
-              {compMessage && (
-                <div
-                  className={`p-3 rounded-md text-xs border flex items-center gap-2 ${
-                    compMessage.isError
-                      ? 'bg-rose-950/60 border-rose-900/80 text-rose-300'
-                      : 'bg-emerald-950/60 border-emerald-900/80 text-emerald-300'
-                  }`}
-                >
-                  {compMessage.isError ? (
-                    <AlertTriangle className="w-4 h-4 shrink-0" />
-                  ) : (
-                    <CheckCircle2 className="w-4 h-4 shrink-0" />
-                  )}
-                  <span>{compMessage.text}</span>
-                </div>
+                  return (
+                    <tr key={t.id} className="hover:bg-zinc-900/40 transition-colors">
+                      <td className="py-3 px-4 font-bold text-zinc-100">
+                        {t.name}
+                      </td>
+                      <td className="py-3 px-4 text-zinc-400">
+                        {t.membersCount ?? 0} members
+                      </td>
+                      <td className="py-3 px-4">
+                        {isEditing ? (
+                          <div className="flex items-center gap-1.5">
+                            <input
+                              type="text"
+                              value={editValenfindId}
+                              onChange={(e) => setEditValenfindId(e.target.value)}
+                              placeholder="e.g. byte_bandits_vip"
+                              className="px-2 py-1 bg-zinc-900 border border-emerald-500 text-xs text-zinc-100 font-mono w-44 focus:outline-none"
+                              autoFocus
+                            />
+                            <button
+                              onClick={() => handleSaveTeamMapping(t.id)}
+                              disabled={savingTeamId === t.id}
+                              className="p-1 bg-emerald-600 hover:bg-emerald-500 text-white"
+                              title="Save"
+                            >
+                              <Check className="w-3.5 h-3.5" />
+                            </button>
+                            <button
+                              onClick={() => setEditingTeamId(null)}
+                              className="p-1 bg-zinc-800 hover:bg-zinc-700 text-zinc-400"
+                              title="Cancel"
+                            >
+                              <X className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        ) : (
+                          <div className="flex items-center gap-2 group">
+                            <span className="font-mono text-emerald-400">
+                              {t.valenfindTeamId || <span className="text-zinc-600 italic">auto-generated</span>}
+                            </span>
+                            <button
+                              onClick={() => {
+                                setEditingTeamId(t.id);
+                                setEditValenfindId(t.valenfindTeamId || '');
+                              }}
+                              className="opacity-0 group-hover:opacity-100 text-zinc-500 hover:text-zinc-300 transition-opacity"
+                              title="Edit Loventia voucher key"
+                            >
+                              <Edit2 className="w-3 h-3" />
+                            </button>
+                          </div>
+                        )}
+                      </td>
+                      <td className="py-3 px-4">
+                        <span
+                          className={`inline-block px-2 py-0.5 text-[10px] font-bold uppercase border ${
+                            isReady
+                              ? 'bg-emerald-950/60 text-emerald-300 border-emerald-800'
+                              : 'bg-zinc-900 text-zinc-400 border-zinc-800'
+                          }`}
+                        >
+                          {isReady ? 'READY' : 'PREPARING'}
+                        </span>
+                      </td>
+                      <td className="py-3 px-4 text-right">
+                        {!isCompStarted ? (
+                          <span className="text-zinc-500 font-mono text-[11px] uppercase tracking-wider">
+                            STAGING
+                          </span>
+                        ) : t.isSolved || t.attemptStatus === 'COMPLETED' ? (
+                          <span className="inline-flex items-center gap-1 text-emerald-400 font-bold">
+                            <CheckCircle2 className="w-3.5 h-3.5" />
+                            <span>SOLVED</span>
+                          </span>
+                        ) : t.attemptStatus === 'IN_PROGRESS' ? (
+                          <span className="inline-flex items-center gap-1 text-amber-400 font-bold">
+                            <Clock className="w-3.5 h-3.5" />
+                            <span>ATTEMPTING</span>
+                          </span>
+                        ) : (
+                          <span className="text-zinc-500 font-mono text-[11px] uppercase tracking-wider">
+                            PENDING
+                          </span>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })
               )}
-
-              {/* Title */}
-              <div className="space-y-1">
-                <label className="text-xs font-medium text-zinc-300">Competition Title</label>
-                <input
-                  type="text"
-                  required
-                  value={compTitle}
-                  onChange={(e) => setCompTitle(e.target.value)}
-                  placeholder="e.g. FOSS CTF 2026"
-                  className="w-full px-3 py-2 rounded-md bg-zinc-950 border border-zinc-800 text-xs text-zinc-200 placeholder-zinc-500 focus:outline-none focus:border-zinc-700"
-                />
-              </div>
-
-              {/* Description */}
-              <div className="space-y-1">
-                <label className="text-xs font-medium text-zinc-300">Description</label>
-                <textarea
-                  rows={2}
-                  value={compDesc}
-                  onChange={(e) => setCompDesc(e.target.value)}
-                  placeholder="Brief description of the competition..."
-                  className="w-full px-3 py-2 rounded-md bg-zinc-950 border border-zinc-800 text-xs text-zinc-200 placeholder-zinc-500 focus:outline-none focus:border-zinc-700"
-                />
-              </div>
-
-              {/* Schedule Fields */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div className="space-y-1">
-                  <label className="text-xs font-medium text-zinc-300 flex items-center gap-1.5">
-                    <Calendar className="w-3.5 h-3.5 text-zinc-500" />
-                    <span>Scheduled Start Time</span>
-                  </label>
-                  <input
-                    type="datetime-local"
-                    value={compStart}
-                    onChange={(e) => setCompStart(e.target.value)}
-                    className="w-full px-3 py-2 rounded-md bg-zinc-950 border border-zinc-800 text-xs text-zinc-200 focus:outline-none focus:border-zinc-700"
-                  />
-                  <p className="text-[11px] text-zinc-500">Optional. Leave empty for immediate activation.</p>
-                </div>
-
-                <div className="space-y-1">
-                  <label className="text-xs font-medium text-zinc-300 flex items-center gap-1.5">
-                    <Clock className="w-3.5 h-3.5 text-zinc-500" />
-                    <span>Scheduled End Time</span>
-                  </label>
-                  <input
-                    type="datetime-local"
-                    value={compEnd}
-                    onChange={(e) => setCompEnd(e.target.value)}
-                    className="w-full px-3 py-2 rounded-md bg-zinc-950 border border-zinc-800 text-xs text-zinc-200 focus:outline-none focus:border-zinc-700"
-                  />
-                  <p className="text-[11px] text-zinc-500">Optional. Must be after start time.</p>
-                </div>
-              </div>
-
-              {/* Pause Toggle */}
-              <div className="pt-2">
-                <label className="flex items-center gap-2 cursor-pointer text-xs text-zinc-300">
-                  <input
-                    type="checkbox"
-                    checked={compPaused}
-                    onChange={(e) => setCompPaused(e.target.checked)}
-                    className="rounded bg-zinc-900 border-zinc-700 text-emerald-500 focus:ring-0"
-                  />
-                  <span>Emergency Pause (Overrides schedule; blocks all submissions immediately)</span>
-                </label>
-              </div>
-
-              {/* Save Button */}
-              <div className="pt-3 border-t border-zinc-800 flex justify-end">
-                <button
-                  type="submit"
-                  disabled={savingComp}
-                  className="px-4 py-2 rounded-md bg-emerald-600 hover:bg-emerald-500 text-white font-medium text-xs transition-colors disabled:opacity-50"
-                >
-                  {savingComp ? 'Saving...' : 'Save Configuration'}
-                </button>
-              </div>
-            </form>
-          </div>
+            </tbody>
+          </table>
         </div>
-      )}
-
-      {/* CREATE CHALLENGE MODAL */}
-      {isCreateOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm">
-          <div className="bg-zinc-950 border border-zinc-800 rounded-lg w-full max-w-xl max-h-[90vh] overflow-y-auto p-6 space-y-4">
-            <div className="flex items-center justify-between border-b border-zinc-800 pb-3">
-              <h2 className="text-sm font-semibold text-zinc-100">Create New Challenge</h2>
-              <button
-                onClick={() => setIsCreateOpen(false)}
-                className="p-1 rounded text-zinc-400 hover:text-zinc-200"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-
-            {modalError && (
-              <div className="p-3 rounded-md bg-rose-950/60 border border-rose-900/80 text-rose-300 text-xs flex items-center gap-2">
-                <AlertTriangle className="w-4 h-4 shrink-0" />
-                <span>{modalError}</span>
-              </div>
-            )}
-
-            <form onSubmit={handleCreateChallenge} className="space-y-4">
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div className="space-y-1 sm:col-span-2">
-                  <label className="text-xs font-medium text-zinc-300">Challenge Title</label>
-                  <input
-                    type="text"
-                    required
-                    value={formTitle}
-                    onChange={(e) => setFormTitle(e.target.value)}
-                    placeholder="e.g. Broken Token"
-                    className="w-full px-3 py-1.5 rounded-md bg-zinc-900 border border-zinc-800 text-xs text-zinc-200 focus:outline-none focus:border-zinc-700"
-                  />
-                </div>
-
-                <div className="space-y-1">
-                  <label className="text-xs font-medium text-zinc-300">Category</label>
-                  <select
-                    value={formCatId}
-                    onChange={(e) => setFormCatId(e.target.value)}
-                    className="w-full px-3 py-1.5 rounded-md bg-zinc-900 border border-zinc-800 text-xs text-zinc-200 focus:outline-none focus:border-zinc-700"
-                  >
-                    {categories.map((cat) => (
-                      <option key={cat.id} value={cat.id}>
-                        {cat.name}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                <div className="space-y-1">
-                  <label className="text-xs font-medium text-zinc-300">Difficulty</label>
-                  <select
-                    value={formDiff}
-                    onChange={(e) => setFormDiff(e.target.value as Difficulty)}
-                    className="w-full px-3 py-1.5 rounded-md bg-zinc-900 border border-zinc-800 text-xs text-zinc-200 focus:outline-none focus:border-zinc-700"
-                  >
-                    <option value="EASY">Easy</option>
-                    <option value="MEDIUM">Medium</option>
-                    <option value="HARD">Hard</option>
-                    <option value="INSANE">Insane</option>
-                  </select>
-                </div>
-
-                <div className="space-y-1">
-                  <label className="text-xs font-medium text-zinc-300">Points Awarded</label>
-                  <input
-                    type="number"
-                    required
-                    min={1}
-                    value={formPoints}
-                    onChange={(e) => setFormPoints(Number(e.target.value))}
-                    className="w-full px-3 py-1.5 rounded-md bg-zinc-900 border border-zinc-800 text-xs text-zinc-200 focus:outline-none focus:border-zinc-700 font-mono"
-                  />
-                </div>
-
-                <div className="space-y-1">
-                  <label className="text-xs font-medium text-zinc-300">Slug (URL identifier)</label>
-                  <input
-                    type="text"
-                    value={formSlug}
-                    onChange={(e) => setFormSlug(e.target.value)}
-                    placeholder="Auto-generated if empty"
-                    className="w-full px-3 py-1.5 rounded-md bg-zinc-900 border border-zinc-800 text-xs text-zinc-200 focus:outline-none focus:border-zinc-700 font-mono"
-                  />
-                </div>
-              </div>
-
-              {/* Description */}
-              <div className="space-y-1">
-                <label className="text-xs font-medium text-zinc-300">Challenge Description</label>
-                <textarea
-                  rows={3}
-                  required
-                  value={formDesc}
-                  onChange={(e) => setFormDesc(e.target.value)}
-                  placeholder="Task instructions and hints for participants..."
-                  className="w-full px-3 py-2 rounded-md bg-zinc-900 border border-zinc-800 text-xs text-zinc-200 focus:outline-none focus:border-zinc-700"
-                />
-              </div>
-
-              {/* Secret Flag */}
-              <div className="p-3.5 rounded-md bg-zinc-900/60 border border-zinc-800 space-y-2">
-                <label className="text-xs font-medium text-zinc-200 flex items-center gap-1.5">
-                  <KeyRound className="w-3.5 h-3.5 text-amber-400" />
-                  <span>Competition Flag Secret</span>
-                </label>
-                <input
-                  type="text"
-                  required
-                  value={formFlag}
-                  onChange={(e) => setFormFlag(e.target.value)}
-                  placeholder="e.g. CTF{crypto_hash_secret_example}"
-                  className="w-full px-3 py-1.5 rounded-md bg-zinc-950 border border-zinc-800 text-xs text-zinc-200 font-mono focus:outline-none focus:border-zinc-700"
-                />
-                <p className="text-[11px] text-zinc-500">
-                  Flags are hashed with HMAC-SHA256 and salt/pepper before storage. Flags are never displayed or stored in plaintext.
-                </p>
-              </div>
-
-              {/* Timed Session Options */}
-              <div className="space-y-3 pt-1">
-                <label className="flex items-center gap-2 cursor-pointer text-xs text-zinc-300">
-                  <input
-                    type="checkbox"
-                    checked={formIsTimed}
-                    onChange={(e) => setFormIsTimed(e.target.checked)}
-                    className="rounded bg-zinc-900 border-zinc-700 text-emerald-500 focus:ring-0"
-                  />
-                  <span>Enable shared team timer for this challenge</span>
-                </label>
-
-                {formIsTimed && (
-                  <div className="pl-6 space-y-1">
-                    <label className="text-xs font-medium text-zinc-300">Duration (Minutes)</label>
-                    <input
-                      type="number"
-                      min={1}
-                      max={1440}
-                      value={formDuration}
-                      onChange={(e) => setFormDuration(Number(e.target.value))}
-                      className="w-32 px-3 py-1.5 rounded-md bg-zinc-900 border border-zinc-800 text-xs text-zinc-200 font-mono focus:outline-none focus:border-zinc-700"
-                    />
-                  </div>
-                )}
-              </div>
-
-              {/* Publish immediately */}
-              <div className="pt-1">
-                <label className="flex items-center gap-2 cursor-pointer text-xs text-zinc-300">
-                  <input
-                    type="checkbox"
-                    checked={formPublishImmediately}
-                    onChange={(e) => setFormPublishImmediately(e.target.checked)}
-                    className="rounded bg-zinc-900 border-zinc-700 text-emerald-500 focus:ring-0"
-                  />
-                  <span>Publish immediately (default: save as Draft)</span>
-                </label>
-              </div>
-
-              {/* Modal Actions */}
-              <div className="pt-3 border-t border-zinc-800 flex justify-end gap-2">
-                <button
-                  type="button"
-                  onClick={() => setIsCreateOpen(false)}
-                  className="px-3 py-1.5 rounded-md border border-zinc-800 hover:bg-zinc-900 text-zinc-300 text-xs transition-colors"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={submittingModal}
-                  className="px-4 py-1.5 rounded-md bg-emerald-600 hover:bg-emerald-500 text-white font-medium text-xs transition-colors disabled:opacity-50"
-                >
-                  {submittingModal ? 'Creating...' : 'Create Challenge'}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* EDIT CHALLENGE MODAL */}
-      {editingChallenge && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm">
-          <div className="bg-zinc-950 border border-zinc-800 rounded-lg w-full max-w-xl max-h-[90vh] overflow-y-auto p-6 space-y-4">
-            <div className="flex items-center justify-between border-b border-zinc-800 pb-3">
-              <h2 className="text-sm font-semibold text-zinc-100">Edit Challenge Metadata</h2>
-              <button
-                onClick={() => setEditingChallenge(null)}
-                className="p-1 rounded text-zinc-400 hover:text-zinc-200"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-
-            {modalError && (
-              <div className="p-3 rounded-md bg-rose-950/60 border border-rose-900/80 text-rose-300 text-xs flex items-center gap-2">
-                <AlertTriangle className="w-4 h-4 shrink-0" />
-                <span>{modalError}</span>
-              </div>
-            )}
-
-            <form onSubmit={handleUpdateChallenge} className="space-y-4">
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div className="space-y-1 sm:col-span-2">
-                  <label className="text-xs font-medium text-zinc-300">Challenge Title</label>
-                  <input
-                    type="text"
-                    required
-                    value={formTitle}
-                    onChange={(e) => setFormTitle(e.target.value)}
-                    className="w-full px-3 py-1.5 rounded-md bg-zinc-900 border border-zinc-800 text-xs text-zinc-200 focus:outline-none focus:border-zinc-700"
-                  />
-                </div>
-
-                <div className="space-y-1">
-                  <label className="text-xs font-medium text-zinc-300">Category</label>
-                  <select
-                    value={formCatId}
-                    onChange={(e) => setFormCatId(e.target.value)}
-                    className="w-full px-3 py-1.5 rounded-md bg-zinc-900 border border-zinc-800 text-xs text-zinc-200 focus:outline-none focus:border-zinc-700"
-                  >
-                    {categories.map((cat) => (
-                      <option key={cat.id} value={cat.id}>
-                        {cat.name}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                <div className="space-y-1">
-                  <label className="text-xs font-medium text-zinc-300">Difficulty</label>
-                  <select
-                    value={formDiff}
-                    onChange={(e) => setFormDiff(e.target.value as Difficulty)}
-                    className="w-full px-3 py-1.5 rounded-md bg-zinc-900 border border-zinc-800 text-xs text-zinc-200 focus:outline-none focus:border-zinc-700"
-                  >
-                    <option value="EASY">Easy</option>
-                    <option value="MEDIUM">Medium</option>
-                    <option value="HARD">Hard</option>
-                    <option value="INSANE">Insane</option>
-                  </select>
-                </div>
-
-                <div className="space-y-1">
-                  <label className="text-xs font-medium text-zinc-300">Points Awarded</label>
-                  <input
-                    type="number"
-                    required
-                    min={1}
-                    value={formPoints}
-                    onChange={(e) => setFormPoints(Number(e.target.value))}
-                    className="w-full px-3 py-1.5 rounded-md bg-zinc-900 border border-zinc-800 text-xs text-zinc-200 font-mono focus:outline-none focus:border-zinc-700"
-                  />
-                </div>
-
-                <div className="space-y-1">
-                  <label className="text-xs font-medium text-zinc-300">Slug</label>
-                  <input
-                    type="text"
-                    value={formSlug}
-                    onChange={(e) => setFormSlug(e.target.value)}
-                    className="w-full px-3 py-1.5 rounded-md bg-zinc-900 border border-zinc-800 text-xs text-zinc-200 font-mono focus:outline-none focus:border-zinc-700"
-                  />
-                </div>
-              </div>
-
-              {/* Description */}
-              <div className="space-y-1">
-                <label className="text-xs font-medium text-zinc-300">Description</label>
-                <textarea
-                  rows={3}
-                  required
-                  value={formDesc}
-                  onChange={(e) => setFormDesc(e.target.value)}
-                  className="w-full px-3 py-2 rounded-md bg-zinc-900 border border-zinc-800 text-xs text-zinc-200 focus:outline-none focus:border-zinc-700"
-                />
-              </div>
-
-              {/* Timed Session Options */}
-              <div className="space-y-3 pt-1">
-                <label className="flex items-center gap-2 cursor-pointer text-xs text-zinc-300">
-                  <input
-                    type="checkbox"
-                    checked={formIsTimed}
-                    onChange={(e) => setFormIsTimed(e.target.checked)}
-                    className="rounded bg-zinc-900 border-zinc-700 text-emerald-500 focus:ring-0"
-                  />
-                  <span>Enable shared team timer for this challenge</span>
-                </label>
-
-                {formIsTimed && (
-                  <div className="pl-6 space-y-1">
-                    <label className="text-xs font-medium text-zinc-300">Duration (Minutes)</label>
-                    <input
-                      type="number"
-                      min={1}
-                      max={1440}
-                      value={formDuration}
-                      onChange={(e) => setFormDuration(Number(e.target.value))}
-                      className="w-32 px-3 py-1.5 rounded-md bg-zinc-900 border border-zinc-800 text-xs text-zinc-200 font-mono focus:outline-none focus:border-zinc-700"
-                    />
-                  </div>
-                )}
-              </div>
-
-              <div className="p-3 rounded-md bg-zinc-900/60 border border-zinc-800 text-[11px] text-zinc-400">
-                To rotate or change the secret flag, use the dedicated <strong className="text-amber-400">Rotate Flag</strong> key action on the challenge row.
-              </div>
-
-              {/* Modal Actions */}
-              <div className="pt-3 border-t border-zinc-800 flex justify-end gap-2">
-                <button
-                  type="button"
-                  onClick={() => setEditingChallenge(null)}
-                  className="px-3 py-1.5 rounded-md border border-zinc-800 hover:bg-zinc-900 text-zinc-300 text-xs transition-colors"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={submittingModal}
-                  className="px-4 py-1.5 rounded-md bg-emerald-600 hover:bg-emerald-500 text-white font-medium text-xs transition-colors disabled:opacity-50"
-                >
-                  {submittingModal ? 'Saving...' : 'Save Changes'}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* ROTATE FLAG MODAL */}
-      {rotatingChallenge && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm">
-          <div className="bg-zinc-950 border border-zinc-800 rounded-lg w-full max-w-md p-6 space-y-4">
-            <div className="flex items-center justify-between border-b border-zinc-800 pb-3">
-              <div className="flex items-center gap-2">
-                <KeyRound className="w-4 h-4 text-amber-400" />
-                <h2 className="text-sm font-semibold text-zinc-100">Rotate Challenge Flag</h2>
-              </div>
-              <button
-                onClick={() => setRotatingChallenge(null)}
-                className="p-1 rounded text-zinc-400 hover:text-zinc-200"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-
-            <p className="text-xs text-zinc-400 leading-relaxed">
-              Updating the flag for <strong className="text-zinc-200">{rotatingChallenge.title}</strong> will securely calculate a new HMAC-SHA256 hash. Existing historical solves and points are preserved.
-            </p>
-
-            {rotateError && (
-              <div className="p-3 rounded-md bg-rose-950/60 border border-rose-900/80 text-rose-300 text-xs flex items-center gap-2">
-                <AlertTriangle className="w-4 h-4 shrink-0" />
-                <span>{rotateError}</span>
-              </div>
-            )}
-
-            <form onSubmit={handleRotateFlag} className="space-y-4">
-              <div className="space-y-1">
-                <label className="text-xs font-medium text-zinc-300">New Flag Secret</label>
-                <input
-                  type="text"
-                  required
-                  value={newFlagValue}
-                  onChange={(e) => setNewFlagValue(e.target.value)}
-                  placeholder="e.g. CTF{new_rotated_secret_flag}"
-                  className="w-full px-3 py-2 rounded-md bg-zinc-900 border border-zinc-800 text-xs text-zinc-200 font-mono focus:outline-none focus:border-zinc-700"
-                />
-              </div>
-
-              <div className="pt-2 border-t border-zinc-800 flex justify-end gap-2">
-                <button
-                  type="button"
-                  onClick={() => setRotatingChallenge(null)}
-                  className="px-3 py-1.5 rounded-md border border-zinc-800 hover:bg-zinc-900 text-zinc-300 text-xs transition-colors"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={rotatingFlag}
-                  className="px-4 py-1.5 rounded-md bg-amber-600 hover:bg-amber-500 text-white font-medium text-xs transition-colors disabled:opacity-50"
-                >
-                  {rotatingFlag ? 'Updating Flag...' : 'Update Flag'}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
+      </section>
     </div>
   );
 };

@@ -12,5 +12,6 @@ router.use(requireAuth, requireAdmin);
 router.get('/', competitionController.getConfig);
 router.put('/', validateBody(updateCompetitionConfigSchema), competitionController.updateConfig);
 router.patch('/', validateBody(updateCompetitionConfigSchema), competitionController.updateConfig);
+router.post('/start', competitionController.adminStartCompetition);
 
 export default router;

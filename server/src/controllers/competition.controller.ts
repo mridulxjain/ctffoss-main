@@ -2,6 +2,7 @@ import { Request, Response } from 'express';
 import { dbService } from '../services/db.service';
 import { competitionAttemptService } from '../services/competitionAttempt.service';
 import { valenfindVerifierService } from '../services/valenfindVerifier.service';
+import { setTeamReadinessSchema } from '../validators';
 
 export const competitionController = {
   /**
@@ -151,6 +152,16 @@ export const competitionController = {
 
     // 1. Enforce competition lifecycle rules
     const compConfig = await dbService.getCompetitionConfig();
+    if (compConfig.status === 'PREPARING') {
+      res.status(400).json({
+        success: false,
+        error: {
+          message: 'The competition has not started yet. Loventia flag submissions are disabled until official start.',
+          code: 'COMPETITION_PREPARING',
+        },
+      });
+      return;
+    }
     if (compConfig.status === 'PAUSED' || compConfig.status === 'DRAFT') {
       res.status(400).json({
         success: false,
@@ -271,6 +282,25 @@ export const competitionController = {
     // 6. Complete attempt using authoritative server timestamps
     try {
       const completedAttempt = await competitionAttemptService.completeAttempt(teamId);
+
+      // Register challenge solve on the challenge board and award points
+      try {
+        const valenfindChal = await dbService.getChallengeBySlug('valenfind');
+        if (valenfindChal) {
+          const alreadySolved = await dbService.hasTeamSolved(teamId, valenfindChal.id);
+          if (!alreadySolved) {
+            await dbService.recordSolve({
+              challengeId: valenfindChal.id,
+              teamId,
+              userId: req.user!.id,
+              points: valenfindChal.points,
+            });
+          }
+        }
+      } catch {
+        // Non-fatal, do not interrupt attempt completion
+      }
+
       res.json({
         success: true,
         data: completedAttempt,
@@ -305,6 +335,125 @@ export const competitionController = {
         error: {
           message: err.message || 'Failed to retrieve competition leaderboard.',
           code: 'INTERNAL_ERROR',
+        },
+      });
+    }
+  },
+
+  /**
+   * Participant endpoint to get competition readiness summary.
+   */
+  async getReadiness(req: Request, res: Response): Promise<void> {
+    try {
+      const summary = await dbService.getCompetitionReadinessSummary(req.user?.teamId ?? undefined);
+      res.json({
+        success: true,
+        data: {
+          ...summary,
+          myTeam: summary.myTeamReadiness,
+          unreadyTeamsCount: summary.notReadyTeamsCount,
+        },
+      });
+    } catch (err: any) {
+      res.status(500).json({
+        success: false,
+        error: {
+          message: err.message || 'Failed to retrieve competition readiness',
+          code: 'INTERNAL_ERROR',
+        },
+      });
+    }
+  },
+
+  /**
+   * Participant endpoint to toggle their team's readiness state.
+   * Derived strictly from authenticated team session.
+   */
+  async setReadiness(req: Request, res: Response): Promise<void> {
+    const teamId = req.user?.teamId;
+    if (!teamId) {
+      res.status(403).json({
+        success: false,
+        error: {
+          message: 'A verified team identity is required to set team readiness.',
+          code: 'TEAM_REQUIRED',
+        },
+      });
+      return;
+    }
+
+    const parseResult = setTeamReadinessSchema.safeParse(req.body);
+    if (!parseResult.success) {
+      res.status(400).json({
+        success: false,
+        error: {
+          message: parseResult.error.errors[0]?.message || 'Invalid readiness payload',
+          code: 'VALIDATION_ERROR',
+        },
+      });
+      return;
+    }
+
+    try {
+      const updated = await dbService.setTeamReadiness(teamId, parseResult.data.isReady);
+      const summary = await dbService.getCompetitionReadinessSummary(teamId);
+      res.json({
+        success: true,
+        data: {
+          ...updated,
+          ...summary,
+          myTeam: summary.myTeamReadiness,
+          unreadyTeamsCount: summary.notReadyTeamsCount,
+        },
+        message: parseResult.data.isReady ? 'Team marked as Ready!' : 'Team marked as Not Ready.',
+      });
+    } catch (err: any) {
+      const code = err.code || 'READINESS_UPDATE_FAILED';
+      const status = code === 'READINESS_LOCKED' ? 400 : 500;
+      res.status(status).json({
+        success: false,
+        error: {
+          message: err.message || 'Failed to update team readiness',
+          code,
+        },
+      });
+    }
+  },
+
+  /**
+   * Admin-only endpoint: "Unlock Loventia & Start Competition"
+   * Rechecks that all eligible teams are ready, records official start timestamp,
+   * transitions atomically to LIVE, and is idempotent.
+   */
+  async adminStartCompetition(req: Request, res: Response): Promise<void> {
+    if (req.user?.role !== 'ADMIN') {
+      res.status(403).json({
+        success: false,
+        error: {
+          message: 'Administrative privileges are required to start the competition.',
+          code: 'FORBIDDEN',
+        },
+      });
+      return;
+    }
+
+    try {
+      const force = req.body?.force === true;
+      const result = await dbService.startCompetitionOfficial(force);
+      res.json({
+        success: true,
+        data: result,
+        message: result.message,
+      });
+    } catch (err: any) {
+      const code = err.code || 'COMPETITION_START_FAILED';
+      const status = code === 'TEAMS_NOT_READY' || code === 'NO_ELIGIBLE_TEAMS' ? 400 : 500;
+      res.status(status).json({
+        success: false,
+        error: {
+          message: err.message || 'Failed to start competition',
+          code,
+          details: err.unreadyTeams ? { unreadyTeams: err.unreadyTeams } : undefined,
         },
       });
     }

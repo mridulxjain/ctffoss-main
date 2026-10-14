@@ -5,14 +5,18 @@
   "main": "dist/index.js",
   "scripts": {
     "dev": "tsx watch src/index.ts",
-    "test": "tsx --test test/competition.test.ts",
+    "test": "NODE_ENV=test tsx --test test/competition.test.ts test/oidc.test.ts test/reliability.test.ts test/devRoster.test.ts test/serverless.test.ts",
     "build": "tsc && npm run db:generate",
     "start": "node dist/index.js",
     "db:generate": "prisma generate",
     "db:push": "prisma db push",
     "db:migrate": "prisma migrate dev",
-    "db:seed": "tsx prisma/seed.ts"
+    "db:migrate:check": "tsx src/scripts/validateMigrationIsolation.ts",
+    "db:migrate:deploy": "tsx src/scripts/validateMigrationIsolation.ts && prisma migrate deploy",
+    "db:seed": "tsx prisma/seed.ts",
+    "db:seed:dev": "tsx src/scripts/seedDevRoster.ts"
   },
+
   "dependencies": {
     "@fossctf/shared": "*",
     "@prisma/client": "^6.4.1",
@@ -22,6 +26,7 @@
     "express": "^4.21.2",
     "helmet": "^8.0.0",
     "jsonwebtoken": "^9.0.2",
+    "openid-client": "^6.8.8",
     "zod": "^3.24.2"
   },
   "devDependencies": {

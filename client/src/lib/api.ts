@@ -1,4 +1,32 @@
-const API_BASE = '/api/v1';
+export const API_BASE = `${(import.meta.env.VITE_API_URL || '').replace(/\/+$/, '')}/api/v1`;
+
+/**
+ * Safely removes any legacy session tokens from localStorage/sessionStorage.
+ * In the same-origin proxy architecture, authentication relies strictly on
+ * secure HttpOnly cookies (__Host-foss_session) and JavaScript never touches session JWTs.
+ */
+export function purgeLegacyStorage(): void {
+  if (typeof window === 'undefined') return;
+  try {
+    localStorage.removeItem('foss_session_token');
+    localStorage.removeItem('foss_token');
+    sessionStorage.removeItem('foss_session_token');
+    sessionStorage.removeItem('foss_token');
+  } catch {
+    // Graceful fallback for restricted storage environments
+  }
+}
+
+// Automatically purge legacy tokens on module initialization
+purgeLegacyStorage();
+
+/**
+ * Returns the authoritative OIDC login URL.
+ * In production, requests to /api/v1/* are proxied same-origin to the backend.
+ */
+export function getLoginUrl(): string {
+  return `${API_BASE}/auth/login`;
+}
 
 export class ApiError extends Error {
   code?: string;
@@ -26,7 +54,7 @@ export async function apiRequest<T = any>(
   const response = await fetch(url, {
     ...options,
     headers,
-    credentials: 'include', // sends cookies
+    credentials: 'include', // sends secure HttpOnly first-party cookies
   });
 
   const data = await response.json().catch(() => null);

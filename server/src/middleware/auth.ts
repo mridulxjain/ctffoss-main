@@ -1,6 +1,7 @@
 import { Request, Response, NextFunction } from 'express';
 import { verifyJwtToken } from '../utils/crypto';
 import { Role } from '@fossctf/shared';
+import { dbService } from '../services/db.service';
 
 interface JWTPayload {
   id: string;
@@ -10,9 +11,10 @@ interface JWTPayload {
   teamId: string | null;
 }
 
-export function authenticate(req: Request, res: Response, next: NextFunction): void {
+export async function authenticate(req: Request, res: Response, next: NextFunction): Promise<void> {
   const token =
-    req.cookies?.foss_session ||
+    req.cookies?.['__Host-foss_session'] ||
+    req.cookies?.['foss_session'] ||
     (req.headers.authorization?.startsWith('Bearer ')
       ? req.headers.authorization.slice(7)
       : null);
@@ -20,12 +22,24 @@ export function authenticate(req: Request, res: Response, next: NextFunction): v
   if (token) {
     const payload = verifyJwtToken<JWTPayload>(token);
     if (payload) {
-      req.user = payload;
+      req.user = { ...payload };
+
+      // Re-validate against authoritative database state if user exists to prevent stale teamId / role
+      try {
+        const liveUser = await dbService.getUser(payload.id);
+        if (liveUser) {
+          req.user.teamId = liveUser.teamId;
+          req.user.role = liveUser.role;
+        }
+      } catch {
+        // Retain verified JWT payload if database lookup encounters transient error
+      }
     }
   }
 
   next();
 }
+
 
 export function requireAuth(req: Request, res: Response, next: NextFunction): void {
   if (!req.user) {

@@ -5,8 +5,9 @@ import { verifyFlag } from '../utils/crypto';
 export const challengeController = {
   async list(req: Request, res: Response): Promise<void> {
     const teamId = req.user?.teamId || null;
+    const role = req.user?.role;
     const categories = await dbService.listCategories();
-    const challenges = await dbService.listChallenges(teamId);
+    const challenges = await dbService.listChallenges(teamId, role);
 
     res.json({
       success: true,
@@ -20,8 +21,9 @@ export const challengeController = {
   async getById(req: Request, res: Response): Promise<void> {
     const { id } = req.params;
     const teamId = req.user?.teamId || null;
+    const role = req.user?.role;
 
-    const challenge = await dbService.getChallengeDetail(id, teamId);
+    const challenge = await dbService.getChallengeDetail(id, teamId, role);
     if (!challenge) {
       res.status(404).json({
         success: false,
@@ -67,6 +69,22 @@ export const challengeController = {
     const teamId = req.user!.teamId!;
 
     const compConfig = await dbService.getCompetitionConfig();
+    try {
+      const chal = await dbService.getChallengeDetail(id, teamId, req.user?.role);
+      const isCompetitionChal = chal.isCompetitionChallenge || chal.slug === 'valenfind';
+      if (isCompetitionChal && compConfig.status === 'PREPARING') {
+        res.status(400).json({
+          success: false,
+          error: {
+            message: 'The competition is in PREPARING status and has not started yet. Loventia challenge launch is locked.',
+            code: 'COMPETITION_PREPARING',
+          },
+        });
+        return;
+      }
+    } catch {
+      // ignore
+    }
     if (compConfig.status === 'SCHEDULED') {
       res.status(400).json({
         success: false,
@@ -120,6 +138,22 @@ export const challengeController = {
 
     // 0. Enforce competition lifecycle state
     const compConfig = await dbService.getCompetitionConfig();
+    try {
+      const chal = await dbService.getChallengeDetail(id, teamId, req.user?.role);
+      const isCompetitionChal = chal.isCompetitionChallenge || chal.slug === 'valenfind';
+      if (isCompetitionChal && compConfig.status === 'PREPARING') {
+        res.status(400).json({
+          success: false,
+          error: {
+            message: 'The competition is in PREPARING status and has not started yet. Loventia submissions are rejected.',
+            code: 'COMPETITION_PREPARING',
+          },
+        });
+        return;
+      }
+    } catch {
+      // ignore
+    }
     if (compConfig.status === 'PAUSED' || compConfig.status === 'DRAFT') {
       res.status(400).json({
         success: false,

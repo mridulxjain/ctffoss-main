@@ -1,4 +1,4 @@
-export type CompetitionState = 'DRAFT' | 'SCHEDULED' | 'LIVE' | 'ENDED' | 'PAUSED';
+export type CompetitionState = 'DRAFT' | 'PREPARING' | 'SCHEDULED' | 'LIVE' | 'ENDED' | 'PAUSED';
 
 export interface CompetitionConfigDTO {
   id: string;
@@ -18,6 +18,40 @@ export interface UpdateCompetitionConfigRequest {
   startTime?: string | null;
   endTime?: string | null;
   isPaused?: boolean;
+  state?: CompetitionState;
+}
+
+export interface TeamReadinessDTO {
+  teamId: string;
+  teamName: string;
+  isReady: boolean;
+  readyAt: string | null;
+}
+
+export interface CompetitionReadinessSummaryDTO {
+  competitionStatus: CompetitionState;
+  totalEligibleTeams: number;
+  readyTeamsCount: number;
+  notReadyTeamsCount: number;
+  allReady: boolean;
+  teams: TeamReadinessDTO[];
+  myTeamReadiness?: {
+    teamId: string;
+    isReady: boolean;
+    readyAt: string | null;
+  } | null;
+  officialStartTime?: string | null;
+}
+
+export interface SetTeamReadinessRequest {
+  isReady: boolean;
+}
+
+export interface StartCompetitionResponse {
+  success: boolean;
+  message: string;
+  startTime: string;
+  state: CompetitionState;
 }
 
 export type AttemptStatus = 'IN_PROGRESS' | 'COMPLETED';

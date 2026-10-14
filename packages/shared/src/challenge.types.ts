@@ -1,3 +1,5 @@
+import type { CompetitionAttemptDTO } from './competition.types';
+
 export type Difficulty = 'EASY' | 'MEDIUM' | 'HARD' | 'INSANE';
 
 export type SessionStatus = 'NOT_STARTED' | 'ACTIVE' | 'COMPLETED' | 'EXPIRED';
@@ -44,12 +46,15 @@ export interface ChallengeListItemDTO {
   isArchived?: boolean;
   sessionStatus?: SessionStatus;
   author?: string | null;
+  externalUrl?: string | null;
+  isCompetitionChallenge?: boolean;
 }
 
 export interface ChallengeDetailDTO extends ChallengeListItemDTO {
   description: string;
   hints: HintDTO[];
   session?: TeamChallengeSessionDTO | null;
+  competitionAttempt?: CompetitionAttemptDTO | null;
 }
 
 export interface AdminChallengeDTO {
@@ -72,6 +77,8 @@ export interface AdminChallengeDTO {
   solveCount: number;
   createdAt: string;
   updatedAt: string;
+  externalUrl?: string | null;
+  isCompetitionChallenge?: boolean;
 }
 
 export interface CreateChallengeRequest {
@@ -87,6 +94,8 @@ export interface CreateChallengeRequest {
   isTimed?: boolean;
   durationMinutes?: number | null;
   author?: string | null;
+  externalUrl?: string | null;
+  isCompetitionChallenge?: boolean;
 }
 
 export interface UpdateChallengeRequest {
@@ -102,6 +111,8 @@ export interface UpdateChallengeRequest {
   durationMinutes?: number | null;
   author?: string | null;
   sortOrder?: number;
+  externalUrl?: string | null;
+  isCompetitionChallenge?: boolean;
 }
 
 export interface UpdateFlagRequest {

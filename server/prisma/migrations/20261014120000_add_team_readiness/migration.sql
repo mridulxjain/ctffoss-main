@@ -1,0 +1,4 @@
+-- AlterTable
+SET search_path TO "ctf";
+ALTER TABLE "Team" ADD COLUMN IF NOT EXISTS "isReady" BOOLEAN NOT NULL DEFAULT false;
+ALTER TABLE "Team" ADD COLUMN IF NOT EXISTS "readyAt" TIMESTAMP(3);

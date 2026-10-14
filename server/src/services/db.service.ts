@@ -19,7 +19,11 @@ import {
   CompetitionLeaderboardResponse,
   TimedAttemptStatus,
   formatElapsedDuration,
+  TeamReadinessDTO,
+  CompetitionReadinessSummaryDTO,
+  StartCompetitionResponse,
 } from '@fossctf/shared';
+import { DEV_TEAMS, DEV_PARTICIPANTS, DEV_ADMIN } from '../fixtures/devRoster';
 
 export interface DBUser {
   id: string;
@@ -27,6 +31,8 @@ export interface DBUser {
   username: string;
   role: Role;
   teamId: string | null;
+  oidcSub?: string | null;
+  avatarUrl?: string | null;
   createdAt: Date;
 }
 
@@ -35,6 +41,8 @@ export interface DBTeam {
   name: string;
   externalId?: string | null;
   valenfindTeamId?: string | null;
+  isReady?: boolean;
+  readyAt?: Date | null;
   totalScore: number;
   lastSolveAt: Date | null;
   members: DBUser[];
@@ -52,6 +60,7 @@ export interface DBCompetitionConfig {
   startTime: Date | null;
   endTime: Date | null;
   isPaused: boolean;
+  state?: CompetitionState;
   updatedAt: Date;
 }
 
@@ -84,10 +93,12 @@ export interface DBChallenge {
   durationMinutes: number | null;
   author: string | null;
   sortOrder: number;
-  flagHash: string;
+  flagHash: string | null;
   hints: DBHint[];
   createdAt: Date;
   updatedAt: Date;
+  externalUrl?: string | null;
+  isCompetitionChallenge?: boolean;
 }
 
 export interface DBSolve {
@@ -141,6 +152,7 @@ class MemoryCTFStore {
     startTime: null,
     endTime: null,
     isPaused: false,
+    state: 'PREPARING',
     updatedAt: new Date(),
   };
 
@@ -183,14 +195,36 @@ class MemoryCTFStore {
 
     this.categories = [catMisc, catWeb, catCrypto, catRev, catForensics];
 
-    // Minimal development challenges: 1 untimed, 1 timed team challenge
+    // Initial challenges: Valenfind competition challenge, 1 practice challenge, 1 timed team challenge
     this.challenges = [
+      {
+        id: 'chal-valenfind-competition',
+        slug: 'valenfind',
+        title: 'Loventia',
+        description:
+          'Loventia is a fictional dating platform featuring client-side and server-side web exploitation vulnerabilities.\n\nOnce the competition unlocks and starts, open the challenge environment in a new tab, investigate the application, claim your team promotional voucher, and submit the issued competition flag back here before time expires.\n\nAll teammates share the exact same start timestamp and authoritative elapsed time.',
+        categoryId: catWeb.id,
+        difficulty: 'MEDIUM',
+        points: 200,
+        isPublished: true,
+        isArchived: false,
+        isTimed: true,
+        durationMinutes: 45,
+        author: 'FOSS Security Squad',
+        sortOrder: 1,
+        flagHash: null,
+        externalUrl: config.loventiaChallengeUrl,
+        isCompetitionChallenge: true,
+        hints: [],
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      },
       {
         id: 'chal-dev-sample-1',
         slug: 'development-verification-challenge',
         title: 'Development Verification Challenge',
         description:
-          'This is a development-only practice challenge to test the platform submission and scoring engine. In an active competition, real challenge briefs will be published here by contest coordinators.',
+          'This is a development practice challenge to test the platform submission and scoring engine. In an active competition, real challenge briefs will be published here by contest coordinators.',
         categoryId: catMisc.id,
         difficulty: 'EASY',
         points: 100,
@@ -199,7 +233,7 @@ class MemoryCTFStore {
         isTimed: false,
         durationMinutes: null,
         author: 'FOSS Platform Team',
-        sortOrder: 1,
+        sortOrder: 2,
         flagHash: hashFlag('FOSSCTF{dev_verification_flag_2026}'),
         hints: [
           {
@@ -227,7 +261,7 @@ class MemoryCTFStore {
         isTimed: true,
         durationMinutes: 30,
         author: 'FOSS Security Squad',
-        sortOrder: 2,
+        sortOrder: 3,
         flagHash: hashFlag('FOSSCTF{synchronized_team_session_2026}'),
         hints: [
           {
@@ -238,6 +272,74 @@ class MemoryCTFStore {
             sortOrder: 1,
           },
         ],
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      },
+      {
+        id: 'chal-crypto-sample-3',
+        slug: 'caesar-cipher-break',
+        title: "Caesar's Modern Cipher",
+        description:
+          'We intercepted an encrypted transmission from a rogue node. Decrypt the ciphertext to retrieve the authentication token.\n\nCiphertext: IRVVFWI{fdhvdu_flskhu_ghfubswhg_2026}\nHint: Standard Caesar shift with key 3.',
+        categoryId: catCrypto.id,
+        difficulty: 'EASY',
+        points: 100,
+        isPublished: true,
+        isArchived: false,
+        isTimed: false,
+        durationMinutes: null,
+        author: 'Crypto Specialist',
+        sortOrder: 4,
+        flagHash: hashFlag('FOSSCTF{caesar_cipher_decrypted_2026}'),
+        hints: [
+          {
+            id: 'hint-crypto-1',
+            challengeId: 'chal-crypto-sample-3',
+            content: 'Shift each letter backward by 3 positions in the alphabet.',
+            cost: 10,
+            sortOrder: 1,
+          },
+        ],
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      },
+      {
+        id: 'chal-rev-sample-4',
+        slug: 'binary-logic-gate',
+        title: 'Binary Logic Matrix',
+        description:
+          'Inspect the validation routine of an embedded keygen. The logic requires matching a XOR mask against the hash digest: 0x5a ^ key.\n\nFlag: FOSSCTF{reverse_engineering_matrix_pass}',
+        categoryId: catRev.id,
+        difficulty: 'MEDIUM',
+        points: 150,
+        isPublished: true,
+        isArchived: false,
+        isTimed: false,
+        durationMinutes: null,
+        author: 'Reverse Engineering Squad',
+        sortOrder: 5,
+        flagHash: hashFlag('FOSSCTF{reverse_engineering_matrix_pass}'),
+        hints: [],
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      },
+      {
+        id: 'chal-forensics-sample-5',
+        slug: 'packet-capture-recon',
+        title: 'Steganographic Packet Stream',
+        description:
+          'Network telemetry captured suspicious outbound DNS requests with encoded TXT records. Reconstruct the stream to uncover the flag.\n\nFlag: FOSSCTF{packet_reconstructed_metadata_2026}',
+        categoryId: catForensics.id,
+        difficulty: 'MEDIUM',
+        points: 120,
+        isPublished: true,
+        isArchived: false,
+        isTimed: false,
+        durationMinutes: null,
+        author: 'Forensics Lead',
+        sortOrder: 6,
+        flagHash: hashFlag('FOSSCTF{packet_reconstructed_metadata_2026}'),
+        hints: [],
         createdAt: new Date(),
         updatedAt: new Date(),
       },
@@ -300,6 +402,8 @@ class MemoryCTFStore {
       name: 'Binary Beasts',
       externalId: 'ext-team-alpha',
       valenfindTeamId: 'e4e8c7ee-8a3c-49f7-a23a-1fbf9d3e386a', // Mapped to Valenfind Team Alpha
+      isReady: false,
+      readyAt: null,
       totalScore: 0,
       lastSolveAt: null,
       members: [userAlice, userBob],
@@ -311,6 +415,8 @@ class MemoryCTFStore {
       name: 'Null Pointers',
       externalId: 'ext-team-bravo',
       valenfindTeamId: 'c9f758bf-077b-4516-89aa-a5b3778ef9e2', // Mapped to Valenfind Team Bravo
+      isReady: false,
+      readyAt: null,
       totalScore: 0,
       lastSolveAt: null,
       members: [userDave],
@@ -325,28 +431,224 @@ class MemoryCTFStore {
   }
 }
 
-const memoryStore = new MemoryCTFStore();
+export const memoryStore = new MemoryCTFStore();
 
-let isPrismaAvailable: boolean | null = null;
+export type StorageDriver = 'postgres' | 'memory';
 
-async function checkPrisma(): Promise<boolean> {
-  if (isPrismaAvailable !== null) return isPrismaAvailable;
+let explicitDriver: StorageDriver | null =
+  (process.env.STORAGE_DRIVER as StorageDriver) || null;
+let activeDriver: StorageDriver | null = null;
+
+/**
+ * Checks whether PostgreSQL is available and determines the active storage driver.
+ *
+ * Requirements enforced:
+ * 1. Production strictly requires PostgreSQL; silent fallback to memory is forbidden.
+ * 2. In development or test, uses MemoryCTFStore if PostgreSQL is not running.
+ * 3. Does NOT permanently cache a failed connectivity check in development mode.
+ * 4. Ensures the application cannot split data across PostgreSQL and memory.
+ */
+export async function checkPrisma(): Promise<boolean> {
+  // If explicitly overridden (e.g. in test suites or via STORAGE_DRIVER env)
+  if (explicitDriver === 'memory') return false;
+  if (explicitDriver === 'postgres') return true;
+
+  // In production, PostgreSQL is mandatory
+  if (config.nodeEnv === 'production') {
+    return true;
+  }
+
+  // If already verified active driver for this process
+  if (activeDriver === 'postgres') return true;
+  if (activeDriver === 'memory') return false;
+
+  // Probe PostgreSQL connection in development
   try {
     await Promise.race([
       prisma.$queryRaw`SELECT 1`,
-      new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout')), 1000)),
+      new Promise((_, reject) => setTimeout(() => reject(new Error('PostgreSQL ping timeout')), 1000)),
     ]);
-    isPrismaAvailable = true;
+    activeDriver = 'postgres';
+    return true;
   } catch {
-    isPrismaAvailable = false;
+    // In development mode, fall back to memoryStore without permanently locking out retries
+    activeDriver = 'memory';
+    return false;
   }
-  return isPrismaAvailable;
 }
 
 export const dbService = {
+  getStorageDriver(): StorageDriver {
+    if (explicitDriver) return explicitDriver;
+    if (config.nodeEnv === 'production') return 'postgres';
+    return activeDriver || 'memory';
+  },
+
+  setStorageDriver(driver: StorageDriver | null): void {
+    explicitDriver = driver;
+    activeDriver = driver;
+  },
+
+  async isDatabaseConnected(): Promise<boolean> {
+    try {
+      await Promise.race([
+        prisma.$queryRaw`SELECT 1`,
+        new Promise((_, reject) => setTimeout(() => reject(new Error('Ping timeout')), 2000)),
+      ]);
+      return true;
+    } catch {
+      return false;
+    }
+  },
+
+  async initStorage(): Promise<StorageDriver> {
+    if (config.nodeEnv === 'production') {
+      if (explicitDriver === 'memory') {
+        throw new Error('Production startup error: STORAGE_DRIVER=memory is strictly forbidden in production mode.');
+      }
+      const isConnected = await this.isDatabaseConnected();
+      if (!isConnected) {
+        throw new Error('Production startup error: Failed to connect to PostgreSQL database. Application cannot start.');
+      }
+      activeDriver = 'postgres';
+      console.log('🛡️  Database: POSTGRESQL (Supabase / PostgreSQL connection established)');
+      return 'postgres';
+    }
+
+    const hasDb = await checkPrisma();
+    if (hasDb) {
+      console.log('🛡️  Database: POSTGRESQL (Connected to local/dev PostgreSQL)');
+      return 'postgres';
+    } else {
+      console.log('⚠️  Database: MEMORY (PostgreSQL not detected; running on isolated in-memory dev store)');
+      return 'memory';
+    }
+  },
+
+  async seedDevFixtures(): Promise<{ teamsCount: number; participantsCount: number; driver: StorageDriver }> {
+    if (config.nodeEnv === 'production' || process.env.NODE_ENV === 'production') {
+      throw new Error('Refusing to seed development fixtures in production mode.');
+    }
+
+    const hasDb = await checkPrisma();
+    if (hasDb) {
+      // Seed into PostgreSQL
+      for (const t of DEV_TEAMS) {
+        await prisma.team.upsert({
+          where: { id: t.id },
+          update: { name: t.name, externalId: t.externalId, valenfindTeamId: t.valenfindTeamId },
+          create: {
+            id: t.id,
+            name: t.name,
+            externalId: t.externalId,
+            valenfindTeamId: t.valenfindTeamId,
+            isReady: false,
+          },
+        });
+      }
+
+      for (const p of DEV_PARTICIPANTS) {
+        await prisma.user.upsert({
+          where: { id: p.id },
+          update: { email: p.email, username: p.username, teamId: p.teamId, role: p.role },
+          create: {
+            id: p.id,
+            email: p.email,
+            username: p.username,
+            role: p.role,
+            teamId: p.teamId,
+          },
+        });
+      }
+
+      // Also ensure Admin exists
+      await prisma.user.upsert({
+        where: { id: DEV_ADMIN.id },
+        update: { role: 'ADMIN' },
+        create: {
+          id: DEV_ADMIN.id,
+          email: DEV_ADMIN.email,
+          username: DEV_ADMIN.username,
+          role: 'ADMIN',
+          teamId: null,
+        },
+      });
+
+      console.log(`🌱 [DevFixtures] Seeded ${DEV_TEAMS.length} teams and ${DEV_PARTICIPANTS.length} participants into PostgreSQL.`);
+      return { teamsCount: DEV_TEAMS.length, participantsCount: DEV_PARTICIPANTS.length, driver: 'postgres' };
+    }
+
+    // Seed into MemoryCTFStore
+    for (const dt of DEV_TEAMS) {
+      if (!memoryStore.teams.has(dt.id)) {
+        memoryStore.teams.set(dt.id, {
+          id: dt.id,
+          name: dt.name,
+          externalId: dt.externalId,
+          valenfindTeamId: dt.valenfindTeamId,
+          isReady: false,
+          readyAt: null,
+          totalScore: 0,
+          lastSolveAt: null,
+          members: [],
+          createdAt: new Date(),
+        });
+      }
+    }
+
+    for (const dp of DEV_PARTICIPANTS) {
+      if (!memoryStore.users.has(dp.id)) {
+        const u: DBUser = {
+          id: dp.id,
+          email: dp.email,
+          username: dp.username,
+          role: dp.role,
+          teamId: dp.teamId,
+          createdAt: new Date(),
+        };
+        memoryStore.users.set(dp.id, u);
+        const team = memoryStore.teams.get(dp.teamId);
+        if (team && !team.members.some((m) => m.id === dp.id)) {
+          team.members.push(u);
+        }
+      }
+    }
+
+    console.log(`🌱 [DevFixtures] Seeded ${DEV_TEAMS.length} teams and ${DEV_PARTICIPANTS.length} participants into MemoryCTFStore.`);
+    return { teamsCount: DEV_TEAMS.length, participantsCount: DEV_PARTICIPANTS.length, driver: 'memory' };
+  },
+
+  async assignUserToTeam(userId: string, teamId: string | null): Promise<DBUser> {
+    const hasDb = await checkPrisma();
+    if (hasDb) {
+      const u = await prisma.user.update({
+        where: { id: userId },
+        data: { teamId },
+      });
+      return {
+        id: u.id,
+        email: u.email,
+        username: u.username,
+        role: u.role as Role,
+        teamId: u.teamId,
+        oidcSub: u.oidcSub,
+        avatarUrl: u.avatarUrl,
+        createdAt: u.createdAt,
+      };
+    }
+
+    const user = memoryStore.users.get(userId);
+    if (!user) {
+      throw new Error('User not found');
+    }
+    user.teamId = teamId;
+    return user;
+  },
+
   async getUser(id: string): Promise<DBUser | null> {
     const hasDb = await checkPrisma();
     if (hasDb) {
+
       const u = await prisma.user.findUnique({ where: { id } });
       if (!u) return null;
       return {
@@ -355,6 +657,8 @@ export const dbService = {
         username: u.username,
         role: u.role as Role,
         teamId: u.teamId,
+        oidcSub: u.oidcSub,
+        avatarUrl: u.avatarUrl,
         createdAt: u.createdAt,
       };
     }
@@ -372,6 +676,8 @@ export const dbService = {
         username: u.username,
         role: u.role as Role,
         teamId: u.teamId,
+        oidcSub: u.oidcSub,
+        avatarUrl: u.avatarUrl,
         createdAt: u.createdAt,
       };
     }
@@ -381,11 +687,57 @@ export const dbService = {
     return null;
   },
 
+  async getUserByUsername(username: string): Promise<DBUser | null> {
+    const hasDb = await checkPrisma();
+    if (hasDb) {
+      const u = await prisma.user.findUnique({ where: { username } });
+      if (!u) return null;
+      return {
+        id: u.id,
+        email: u.email,
+        username: u.username,
+        role: u.role as Role,
+        teamId: u.teamId,
+        oidcSub: u.oidcSub,
+        avatarUrl: u.avatarUrl,
+        createdAt: u.createdAt,
+      };
+    }
+    for (const u of memoryStore.users.values()) {
+      if (u.username.toLowerCase() === username.toLowerCase()) return u;
+    }
+    return null;
+  },
+
+  async getUserByOidcSub(oidcSub: string): Promise<DBUser | null> {
+    const hasDb = await checkPrisma();
+    if (hasDb) {
+      const u = await prisma.user.findUnique({ where: { oidcSub } });
+      if (!u) return null;
+      return {
+        id: u.id,
+        email: u.email,
+        username: u.username,
+        role: u.role as Role,
+        teamId: u.teamId,
+        oidcSub: u.oidcSub,
+        avatarUrl: u.avatarUrl,
+        createdAt: u.createdAt,
+      };
+    }
+    for (const u of memoryStore.users.values()) {
+      if (u.oidcSub === oidcSub) return u;
+    }
+    return null;
+  },
+
   async createUser(data: {
     email: string;
     username: string;
     role: Role;
     teamId?: string | null;
+    oidcSub?: string | null;
+    avatarUrl?: string | null;
   }): Promise<DBUser> {
     const hasDb = await checkPrisma();
     if (hasDb) {
@@ -395,6 +747,8 @@ export const dbService = {
           username: data.username,
           role: data.role,
           teamId: data.teamId || null,
+          oidcSub: data.oidcSub || null,
+          avatarUrl: data.avatarUrl || null,
         },
       });
       return {
@@ -403,6 +757,8 @@ export const dbService = {
         username: u.username,
         role: u.role as Role,
         teamId: u.teamId,
+        oidcSub: u.oidcSub,
+        avatarUrl: u.avatarUrl,
         createdAt: u.createdAt,
       };
     }
@@ -413,6 +769,8 @@ export const dbService = {
       username: data.username,
       role: data.role,
       teamId: data.teamId || null,
+      oidcSub: data.oidcSub || null,
+      avatarUrl: data.avatarUrl || null,
       createdAt: new Date(),
     };
     memoryStore.users.set(newUser.id, newUser);
@@ -572,8 +930,13 @@ export const dbService = {
     return memoryStore.categories;
   },
 
-  async listChallenges(teamId?: string | null): Promise<any[]> {
+  async listChallenges(teamId?: string | null, userRole?: string | null): Promise<any[]> {
     const hasDb = await checkPrisma();
+    const compConfig = await this.getCompetitionConfig();
+    const isPrivilegedAdmin = userRole === 'ADMIN';
+    const canAccessTarget = isPrivilegedAdmin || compConfig.status === 'LIVE';
+    const compAttempt = teamId ? await this.getCompetitionAttempt(teamId) : null;
+
     if (hasDb) {
       const chals = await prisma.challenge.findMany({
         where: { isPublished: true, isArchived: false },
@@ -587,9 +950,22 @@ export const dbService = {
 
       const now = Date.now();
       return chals.map((c) => {
-        const isSolvedByTeam = teamId ? c.solves.some((s) => s.teamId === teamId) : false;
+        const isCompChal = c.slug === 'valenfind' || (c as any).isCompetitionChallenge === true;
+        let isSolvedByTeam = teamId ? c.solves.some((s) => s.teamId === teamId) : false;
         let sessionStatus: SessionStatus | undefined;
-        if (c.isTimed && teamId) {
+
+        if (isCompChal && teamId) {
+          if (compAttempt) {
+            if (compAttempt.status === 'COMPLETED') {
+              isSolvedByTeam = true;
+              sessionStatus = 'COMPLETED';
+            } else if (compAttempt.status === 'IN_PROGRESS') {
+              sessionStatus = 'ACTIVE';
+            }
+          } else {
+            sessionStatus = 'NOT_STARTED';
+          }
+        } else if (c.isTimed && teamId) {
           if (isSolvedByTeam) {
             sessionStatus = 'COMPLETED';
           } else {
@@ -606,6 +982,9 @@ export const dbService = {
           }
         }
 
+        const rawTargetUrl = (c as any).externalUrl || (isCompChal ? config.loventiaChallengeUrl : null);
+        const externalUrl = canAccessTarget ? rawTargetUrl : null;
+
         return {
           id: c.id,
           slug: c.slug,
@@ -620,6 +999,8 @@ export const dbService = {
           durationMinutes: c.durationMinutes,
           sessionStatus,
           author: c.author,
+          externalUrl,
+          isCompetitionChallenge: isCompChal,
         };
       });
     }
@@ -630,10 +1011,22 @@ export const dbService = {
       .map((c) => {
         const cat = memoryStore.categories.find((k) => k.id === c.categoryId);
         const chSolves = memoryStore.solves.filter((s) => s.challengeId === c.id);
-        const isSolvedByTeam = teamId ? chSolves.some((s) => s.teamId === teamId) : false;
+        const isCompChal = c.slug === 'valenfind' || (c as any).isCompetitionChallenge === true;
+        let isSolvedByTeam = teamId ? chSolves.some((s) => s.teamId === teamId) : false;
 
         let sessionStatus: SessionStatus | undefined;
-        if (c.isTimed && teamId) {
+        if (isCompChal && teamId) {
+          if (compAttempt) {
+            if (compAttempt.status === 'COMPLETED') {
+              isSolvedByTeam = true;
+              sessionStatus = 'COMPLETED';
+            } else if (compAttempt.status === 'IN_PROGRESS') {
+              sessionStatus = 'ACTIVE';
+            }
+          } else {
+            sessionStatus = 'NOT_STARTED';
+          }
+        } else if (c.isTimed && teamId) {
           if (isSolvedByTeam) {
             sessionStatus = 'COMPLETED';
           } else {
@@ -664,12 +1057,24 @@ export const dbService = {
           durationMinutes: c.durationMinutes,
           sessionStatus,
           author: c.author,
+          externalUrl: canAccessTarget
+            ? (c as any).externalUrl || (isCompChal ? config.loventiaChallengeUrl : null)
+            : null,
+          isCompetitionChallenge: isCompChal,
         };
       });
   },
 
-  async getChallengeDetail(challengeId: string, teamId?: string | null): Promise<any | null> {
+  async getChallengeDetail(
+    challengeId: string,
+    teamId?: string | null,
+    userRole?: string | null
+  ): Promise<any | null> {
     const hasDb = await checkPrisma();
+    const compConfig = await this.getCompetitionConfig();
+    const isPrivilegedAdmin = userRole === 'ADMIN';
+    const canAccessTarget = isPrivilegedAdmin || compConfig.status === 'LIVE';
+
     if (hasDb) {
       const c = await prisma.challenge.findUnique({
         where: { id: challengeId },
@@ -689,10 +1094,24 @@ export const dbService = {
         unlockedHintIds = new Set(unlocks.map((u) => u.hintId));
       }
 
+      const isCompChal = c.slug === 'valenfind' || (c as any).isCompetitionChallenge === true;
+      let compAttempt: CompetitionAttemptDTO | null = null;
+      let isSolvedByTeam = teamId ? c.solves.some((s) => s.teamId === teamId) : false;
+
+      if (isCompChal && teamId) {
+        compAttempt = await this.getCompetitionAttempt(teamId);
+        if (compAttempt?.status === 'COMPLETED') {
+          isSolvedByTeam = true;
+        }
+      }
+
       let sessionDTO: TeamChallengeSessionDTO | null = null;
-      if (c.isTimed && teamId) {
+      if (c.isTimed && teamId && !isCompChal) {
         sessionDTO = await this.getTeamChallengeSession(teamId, challengeId);
       }
+
+      const rawTargetUrl = (c as any).externalUrl || (isCompChal ? config.loventiaChallengeUrl : null);
+      const externalUrl = canAccessTarget ? rawTargetUrl : null;
 
       return {
         id: c.id,
@@ -704,13 +1123,16 @@ export const dbService = {
         difficulty: c.difficulty,
         points: c.points,
         solveCount: c.solves.length,
-        isSolvedByTeam: teamId ? c.solves.some((s) => s.teamId === teamId) : false,
+        isSolvedByTeam,
         isPublished: c.isPublished,
         isArchived: c.isArchived,
         isTimed: c.isTimed,
         durationMinutes: c.durationMinutes,
         session: sessionDTO,
+        competitionAttempt: compAttempt,
         author: c.author,
+        externalUrl,
+        isCompetitionChallenge: isCompChal,
         hints: c.hints.map((h) => ({
           id: h.id,
           cost: h.cost,
@@ -725,11 +1147,24 @@ export const dbService = {
     if (!c || !c.isPublished) return null;
     const cat = memoryStore.categories.find((k) => k.id === c.categoryId);
     const chSolves = memoryStore.solves.filter((s) => s.challengeId === c.id);
+    const isCompChal = c.slug === 'valenfind' || (c as any).isCompetitionChallenge === true;
+    let compAttempt: CompetitionAttemptDTO | null = null;
+    let isSolvedByTeam = teamId ? chSolves.some((s) => s.teamId === teamId) : false;
+
+    if (isCompChal && teamId) {
+      compAttempt = await this.getCompetitionAttempt(teamId);
+      if (compAttempt?.status === 'COMPLETED') {
+        isSolvedByTeam = true;
+      }
+    }
 
     let sessionDTO: TeamChallengeSessionDTO | null = null;
-    if (c.isTimed && teamId) {
+    if (c.isTimed && teamId && !isCompChal) {
       sessionDTO = await this.getTeamChallengeSession(teamId, challengeId);
     }
+
+    const rawTargetUrl = (c as any).externalUrl || (isCompChal ? config.loventiaChallengeUrl : null);
+    const externalUrl = canAccessTarget ? rawTargetUrl : null;
 
     return {
       id: c.id,
@@ -741,13 +1176,16 @@ export const dbService = {
       difficulty: c.difficulty,
       points: c.points,
       solveCount: chSolves.length,
-      isSolvedByTeam: teamId ? chSolves.some((s) => s.teamId === teamId) : false,
+      isSolvedByTeam,
       isPublished: c.isPublished,
       isArchived: c.isArchived,
       isTimed: c.isTimed,
       durationMinutes: c.durationMinutes,
       session: sessionDTO,
+      competitionAttempt: compAttempt,
       author: c.author,
+      externalUrl,
+      isCompetitionChallenge: isCompChal,
       hints: c.hints.map((h) => {
         const isUnlocked =
           h.cost === 0 || (teamId ? memoryStore.unlockedHints.has(`${teamId}:${h.id}`) : false);
@@ -1195,7 +1633,7 @@ export const dbService = {
       return flags.map((f) => f.flagHash);
     }
     const c = memoryStore.challenges.find((k) => k.id === challengeId);
-    return c ? [c.flagHash] : [];
+    return c && c.flagHash ? [c.flagHash] : [];
   },
 
   async unlockHint(teamId: string, hintId: string): Promise<{ success: boolean; content?: string }> {
@@ -1694,10 +2132,13 @@ export const dbService = {
           const startTime = parsed.startTime ? new Date(parsed.startTime) : null;
           const endTime = parsed.endTime ? new Date(parsed.endTime) : null;
           const isPaused = Boolean(parsed.isPaused);
+          const storedState = parsed.state as CompetitionState | undefined;
 
-          let status: CompetitionState = 'LIVE';
+          let status: CompetitionState = storedState || 'PREPARING';
           if (isPaused) {
             status = 'PAUSED';
+          } else if (status === 'PREPARING') {
+            // Remains PREPARING until admin explicitly starts it
           } else if (startTime && now < startTime.getTime()) {
             status = 'SCHEDULED';
           } else if (endTime && now > endTime.getTime()) {
@@ -1721,15 +2162,14 @@ export const dbService = {
       }
 
       // Default when not yet configured
-      const isDev = config.isDev;
-      const defaultStatus: CompetitionState = isDev ? 'LIVE' : 'DRAFT';
+      const defaultStatus: CompetitionState = 'PREPARING';
       return {
         id: 'main',
         title: 'FOSS CTF 2026',
         description: 'Official University Capture The Flag Competition organized by FOSS Club.',
         startTime: null,
         endTime: null,
-        isPaused: !isDev,
+        isPaused: false,
         state: defaultStatus,
         status: defaultStatus,
         serverTime: new Date(now).toISOString(),
@@ -1738,9 +2178,11 @@ export const dbService = {
 
     // Memory Store fallback
     const cfg = memoryStore.competitionConfig;
-    let status: CompetitionState = 'LIVE';
+    let status: CompetitionState = cfg.state || 'PREPARING';
     if (cfg.isPaused) {
       status = 'PAUSED';
+    } else if (status === 'PREPARING') {
+      // Remains PREPARING until started
     } else if (cfg.startTime && now < cfg.startTime.getTime()) {
       status = 'SCHEDULED';
     } else if (cfg.endTime && now > cfg.endTime.getTime()) {
@@ -1769,6 +2211,7 @@ export const dbService = {
     const startTimeStr = data.startTime !== undefined ? data.startTime : current.startTime;
     const endTimeStr = data.endTime !== undefined ? data.endTime : current.endTime;
     const isPaused = data.isPaused !== undefined ? data.isPaused : current.isPaused;
+    const state = data.state !== undefined ? data.state : current.state;
 
     const startTime = startTimeStr ? new Date(startTimeStr) : null;
     const endTime = endTimeStr ? new Date(endTimeStr) : null;
@@ -1781,10 +2224,16 @@ export const dbService = {
     let status: CompetitionState = 'LIVE';
     if (isPaused) {
       status = 'PAUSED';
+    } else if (data.state === 'LIVE') {
+      status = 'LIVE';
     } else if (startTime && now < startTime.getTime()) {
       status = 'SCHEDULED';
     } else if (endTime && now > endTime.getTime()) {
       status = 'ENDED';
+    } else if (data.state !== undefined) {
+      status = data.state;
+    } else if (current.state === 'PREPARING' && data.startTime === undefined && data.isPaused === undefined) {
+      status = 'PREPARING';
     }
 
     const payload = {
@@ -1793,7 +2242,22 @@ export const dbService = {
       startTime: startTime ? startTime.toISOString() : null,
       endTime: endTime ? endTime.toISOString() : null,
       isPaused,
+      state: status,
     };
+
+    if (status === 'PREPARING') {
+      if (hasDb) {
+        await prisma.competitionAttempt.deleteMany().catch(() => null);
+      } else {
+        memoryStore.attempts.clear();
+        memoryStore.solves = [];
+        memoryStore.sessions.clear();
+        for (const t of memoryStore.teams.values()) {
+          t.totalScore = 0;
+          t.lastSolveAt = null;
+        }
+      }
+    }
 
     if (hasDb) {
       await prisma.competitionConfig.upsert({
@@ -1823,6 +2287,7 @@ export const dbService = {
       startTime,
       endTime,
       isPaused,
+      state: status,
       updatedAt: new Date(now),
     };
 
@@ -1874,6 +2339,11 @@ export const dbService = {
   async startCompetitionAttempt(teamId: string): Promise<CompetitionAttemptDTO> {
     // 1. Enforce competition lifecycle rules
     const compConfig = await this.getCompetitionConfig();
+    if (compConfig.status === 'PREPARING') {
+      const err = new Error('The competition has not started yet. Loventia is locked until official start.');
+      (err as any).code = 'COMPETITION_PREPARING';
+      throw err;
+    }
     if (compConfig.status === 'PAUSED' || compConfig.status === 'DRAFT') {
       const err = new Error('The competition is currently not accepting attempts.');
       (err as any).code = 'COMPETITION_INACTIVE';
@@ -1891,7 +2361,8 @@ export const dbService = {
     }
 
     const hasDb = await checkPrisma();
-    const now = new Date();
+    // Authoritative synchronized start time: compConfig.startTime
+    const officialStartTime = compConfig.startTime ? new Date(compConfig.startTime) : new Date();
 
     if (hasDb) {
       // Atomic upsert: If an attempt already exists, update nothing and return the existing attempt!
@@ -1901,7 +2372,7 @@ export const dbService = {
         create: {
           teamId,
           status: 'IN_PROGRESS',
-          startedAt: now,
+          startedAt: officialStartTime,
         },
       });
 
@@ -1914,11 +2385,11 @@ export const dbService = {
         id: `att-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
         teamId,
         status: 'IN_PROGRESS',
-        startedAt: now,
+        startedAt: officialStartTime,
         completedAt: null,
         elapsedMs: null,
-        createdAt: now,
-        updatedAt: now,
+        createdAt: new Date(),
+        updatedAt: new Date(),
       };
       memoryStore.attempts.set(teamId, attempt);
     }
@@ -1929,6 +2400,7 @@ export const dbService = {
   async completeCompetitionAttempt(teamId: string): Promise<CompetitionAttemptDTO> {
     const hasDb = await checkPrisma();
     const now = new Date();
+    const compConfig = await this.getCompetitionConfig();
 
     if (hasDb) {
       const existing = await prisma.competitionAttempt.findUnique({
@@ -1946,7 +2418,9 @@ export const dbService = {
         return (await this.getCompetitionAttempt(teamId))!;
       }
 
-      const elapsedMs = Math.max(0, now.getTime() - existing.startedAt.getTime());
+      // Synchronized competition start time: official start time recorded on compConfig
+      const officialStartTime = compConfig.startTime ? new Date(compConfig.startTime) : existing.startedAt;
+      const elapsedMs = Math.max(0, now.getTime() - officialStartTime.getTime());
 
       // Concurrency protection: update only if status is still IN_PROGRESS
       await prisma.competitionAttempt.updateMany({
@@ -1975,13 +2449,207 @@ export const dbService = {
       return (await this.getCompetitionAttempt(teamId))!;
     }
 
-    const elapsedMs = Math.max(0, now.getTime() - attempt.startedAt.getTime());
+    const officialStartTime = compConfig.startTime ? new Date(compConfig.startTime) : attempt.startedAt;
+    const elapsedMs = Math.max(0, now.getTime() - officialStartTime.getTime());
     attempt.status = 'COMPLETED';
     attempt.completedAt = now;
     attempt.elapsedMs = elapsedMs;
     attempt.updatedAt = now;
 
     return (await this.getCompetitionAttempt(teamId))!;
+  },
+
+  /**
+   * Team Readiness Management for Loventia Competition
+   */
+  async getTeamReadiness(teamId: string): Promise<{ isReady: boolean; readyAt: string | null }> {
+    const hasDb = await checkPrisma();
+    if (hasDb) {
+      const team = await prisma.team.findUnique({
+        where: { id: teamId },
+        select: { isReady: true, readyAt: true },
+      });
+      if (!team) throw new Error('Team not found');
+      return {
+        isReady: Boolean(team.isReady),
+        readyAt: team.readyAt ? team.readyAt.toISOString() : null,
+      };
+    }
+
+    const team = memoryStore.teams.get(teamId);
+    if (!team) throw new Error('Team not found');
+    return {
+      isReady: Boolean(team.isReady),
+      readyAt: team.readyAt ? team.readyAt.toISOString() : null,
+    };
+  },
+
+  async setTeamReadiness(teamId: string, isReady: boolean): Promise<{ isReady: boolean; readyAt: string | null }> {
+    const compConfig = await this.getCompetitionConfig();
+    if (compConfig.status !== 'PREPARING' && compConfig.status !== 'DRAFT') {
+      const err = new Error('Competition has already started. Team readiness cannot be modified.');
+      (err as any).code = 'READINESS_LOCKED';
+      throw err;
+    }
+
+    const hasDb = await checkPrisma();
+    const now = isReady ? new Date() : null;
+
+    if (hasDb) {
+      const updated = await prisma.team.update({
+        where: { id: teamId },
+        data: {
+          isReady,
+          readyAt: now,
+        },
+        select: { isReady: true, readyAt: true },
+      });
+      return {
+        isReady: Boolean(updated.isReady),
+        readyAt: updated.readyAt ? updated.readyAt.toISOString() : null,
+      };
+    }
+
+    const team = memoryStore.teams.get(teamId);
+    if (!team) throw new Error('Team not found');
+    team.isReady = isReady;
+    team.readyAt = now;
+    return {
+      isReady,
+      readyAt: now ? now.toISOString() : null,
+    };
+  },
+
+  async getCompetitionReadinessSummary(currentTeamId?: string): Promise<CompetitionReadinessSummaryDTO> {
+    const compConfig = await this.getCompetitionConfig();
+    const hasDb = await checkPrisma();
+
+    interface TeamRow {
+      id: string;
+      name: string;
+      isReady: boolean;
+      readyAt: Date | null;
+    }
+
+    let teams: TeamRow[] = [];
+    if (hasDb) {
+      teams = await prisma.team.findMany({
+        select: {
+          id: true,
+          name: true,
+          isReady: true,
+          readyAt: true,
+        },
+        orderBy: { name: 'asc' },
+      });
+    } else {
+      teams = Array.from(memoryStore.teams.values()).map((t) => ({
+        id: t.id,
+        name: t.name,
+        isReady: Boolean(t.isReady),
+        readyAt: t.readyAt ?? null,
+      }));
+      teams.sort((a, b) => a.name.localeCompare(b.name));
+    }
+
+    const totalEligibleTeams = teams.length;
+    const readyTeamsCount = teams.filter((t) => t.isReady).length;
+    const notReadyTeamsCount = totalEligibleTeams - readyTeamsCount;
+    const allReady = totalEligibleTeams > 0 && readyTeamsCount === totalEligibleTeams;
+
+    const myTeam = currentTeamId ? teams.find((t) => t.id === currentTeamId) : null;
+
+    const teamsDTO: TeamReadinessDTO[] = teams.map((t) => ({
+      teamId: t.id,
+      teamName: t.name,
+      isReady: Boolean(t.isReady),
+      readyAt: t.readyAt ? t.readyAt.toISOString() : null,
+    }));
+
+    return {
+      competitionStatus: compConfig.status,
+      totalEligibleTeams,
+      readyTeamsCount,
+      notReadyTeamsCount,
+      allReady,
+      teams: teamsDTO,
+      myTeamReadiness: myTeam
+        ? {
+            teamId: myTeam.id,
+            isReady: Boolean(myTeam.isReady),
+            readyAt: myTeam.readyAt ? myTeam.readyAt.toISOString() : null,
+          }
+        : null,
+      officialStartTime: compConfig.startTime,
+    };
+  },
+
+  /**
+   * Admin synchronized competition start: "Unlock Loventia & Start Competition"
+   * Rechecks readiness of all eligible teams.
+   * Atomic and idempotent: if already LIVE, returns existing start time.
+   */
+  async startCompetitionOfficial(force = false): Promise<StartCompetitionResponse> {
+    const hasDb = await checkPrisma();
+    const current = await this.getCompetitionConfig();
+
+    // Idempotent: If already LIVE, do not permit a second start to reset the official start timestamp!
+    if (current.status === 'LIVE' && current.startTime) {
+      return {
+        success: true,
+        message: 'Competition is already live.',
+        startTime: current.startTime,
+        state: 'LIVE',
+      };
+    }
+
+    // Recheck all eligible teams' readiness
+    let eligibleTeams: Array<{ id: string; name: string; isReady: boolean }> = [];
+    if (hasDb) {
+      const teams = await prisma.team.findMany({
+        select: { id: true, name: true, isReady: true },
+      });
+      eligibleTeams = teams;
+    } else {
+      eligibleTeams = Array.from(memoryStore.teams.values()).map((t) => ({
+        id: t.id,
+        name: t.name,
+        isReady: Boolean(t.isReady),
+      }));
+    }
+
+    if (eligibleTeams.length === 0) {
+      const err = new Error('No eligible teams found in the competition.');
+      (err as any).code = 'NO_ELIGIBLE_TEAMS';
+      throw err;
+    }
+
+    const unreadyTeams = eligibleTeams.filter((t) => !t.isReady);
+    if (!force && unreadyTeams.length > 0) {
+      const names = unreadyTeams.map((t) => t.name).join(', ');
+      const err = new Error(`Cannot start competition: ${unreadyTeams.length} team(s) are not ready (${names}).`);
+      (err as any).code = 'TEAMS_NOT_READY';
+      (err as any).unreadyTeams = unreadyTeams.map((t) => t.name);
+      throw err;
+    }
+
+    // Record official start timestamp using the server clock
+    const now = new Date();
+    const startTimeIso = now.toISOString();
+
+    // Transition state atomically to LIVE
+    await this.updateCompetitionConfig({
+      startTime: startTimeIso,
+      state: 'LIVE',
+      isPaused: false,
+    });
+
+    return {
+      success: true,
+      message: 'Competition successfully started. Loventia is now unlocked!',
+      startTime: startTimeIso,
+      state: 'LIVE',
+    };
   },
 
   /**
@@ -2001,6 +2669,121 @@ export const dbService = {
     if (team) {
       team.valenfindTeamId = valenfindTeamId;
     }
+  },
+
+  /**
+   * Admin-only retrieval of all competition teams with Valenfind mapping status and readiness.
+   */
+  async listAdminTeams(): Promise<Array<{
+    id: string;
+    name: string;
+    externalId: string | null;
+    valenfindTeamId: string | null;
+    isReady: boolean;
+    readyAt: string | null;
+    membersCount: number;
+    totalScore: number;
+    isSolved?: boolean;
+    attemptStatus?: 'NOT_STARTED' | 'IN_PROGRESS' | 'COMPLETED';
+    createdAt: string;
+  }>> {
+    const hasDb = await checkPrisma();
+    const compConfig = await this.getCompetitionConfig();
+    const isLiveOrEnded = compConfig.status === 'LIVE' || compConfig.status === 'ENDED';
+
+    if (hasDb) {
+      const teams = await prisma.team.findMany({
+        include: {
+          members: { select: { id: true } },
+          solves: { select: { pointsAwarded: true } },
+          attempts: true,
+        },
+        orderBy: { name: 'asc' },
+      });
+      return teams.map((t) => {
+        const attempt = (t as any).attempts?.[0];
+        const isSolved = Boolean(isLiveOrEnded && attempt?.status === 'COMPLETED');
+        const attemptStatus = isLiveOrEnded ? (attempt?.status as any || 'NOT_STARTED') : 'NOT_STARTED';
+        return {
+          id: t.id,
+          name: t.name,
+          externalId: t.externalId,
+          valenfindTeamId: (t as any).valenfindTeamId ?? null,
+          isReady: Boolean((t as any).isReady),
+          readyAt: (t as any).readyAt ? (t as any).readyAt.toISOString() : null,
+          membersCount: t.members.length,
+          totalScore: isLiveOrEnded ? t.solves.reduce((sum, s) => sum + s.pointsAwarded, 0) : 0,
+          isSolved,
+          attemptStatus,
+          createdAt: t.createdAt.toISOString(),
+        };
+      });
+    }
+
+    return Array.from(memoryStore.teams.values()).map((t) => {
+      const members = Array.from(memoryStore.users.values()).filter((u) => u.teamId === t.id);
+      const attempt = memoryStore.attempts.get(t.id);
+      const solves = isLiveOrEnded ? memoryStore.solves.filter((s) => s.teamId === t.id) : [];
+      const totalScore = isLiveOrEnded ? solves.reduce((sum, s) => sum + s.pointsAwarded, 0) : 0;
+      const isSolved = Boolean(isLiveOrEnded && attempt?.status === 'COMPLETED');
+      const attemptStatus = isLiveOrEnded ? (attempt?.status || 'NOT_STARTED') : 'NOT_STARTED';
+
+      return {
+        id: t.id,
+        name: t.name,
+        externalId: t.externalId || null,
+        valenfindTeamId: t.valenfindTeamId || null,
+        isReady: Boolean(t.isReady),
+        readyAt: t.readyAt ? t.readyAt.toISOString() : null,
+        membersCount: members.length,
+        totalScore,
+        isSolved,
+        attemptStatus,
+        createdAt: t.createdAt.toISOString(),
+      };
+    });
+  },
+
+  /**
+   * Retrieves a challenge by its unique slug.
+   */
+  async getChallengeBySlug(slug: string): Promise<DBChallenge | null> {
+    const hasDb = await checkPrisma();
+    if (hasDb) {
+      const c = await prisma.challenge.findUnique({
+        where: { slug },
+        include: { hints: true },
+      });
+      if (!c) return null;
+      return {
+        id: c.id,
+        slug: c.slug,
+        title: c.title,
+        description: c.description,
+        categoryId: c.categoryId,
+        difficulty: c.difficulty as Difficulty,
+        points: c.points,
+        isPublished: c.isPublished,
+        isArchived: c.isArchived,
+        isTimed: c.isTimed,
+        durationMinutes: c.durationMinutes,
+        author: c.author,
+        sortOrder: c.sortOrder,
+        flagHash: null,
+        externalUrl: (c as any).externalUrl || (c.slug === 'valenfind' ? config.valenfindChallengeUrl : null),
+        isCompetitionChallenge: c.slug === 'valenfind' || (c as any).isCompetitionChallenge === true,
+        hints: c.hints.map((h) => ({
+          id: h.id,
+          challengeId: h.challengeId,
+          content: h.content,
+          cost: h.cost,
+          sortOrder: h.sortOrder,
+        })),
+        createdAt: c.createdAt,
+        updatedAt: c.updatedAt,
+      };
+    }
+    return memoryStore.challenges.find((c) => c.slug === slug) || null;
   },
 
   /**
@@ -2064,14 +2847,18 @@ export const dbService = {
       });
     }
 
+    const compConfig = await this.getCompetitionConfig();
+    const officialStartTime = compConfig.startTime ? new Date(compConfig.startTime) : null;
+
     // Map each team to its entry
     const entries: Array<Omit<CompetitionLeaderboardEntryDTO, 'rank'>> = rawTeams.map((t) => {
       const att = t.attempt;
       if (att && att.status === 'COMPLETED') {
+        const startToUse = officialStartTime || new Date(att.startedAt);
         const elapsed =
           att.elapsedMs ??
           (att.completedAt
-            ? Math.max(0, new Date(att.completedAt).getTime() - new Date(att.startedAt).getTime())
+            ? Math.max(0, new Date(att.completedAt).getTime() - startToUse.getTime())
             : null);
         return {
           teamId: t.teamId,
@@ -2079,19 +2866,20 @@ export const dbService = {
           status: 'COMPLETED' as TimedAttemptStatus,
           elapsedMs: elapsed,
           formattedTime: formatElapsedDuration(elapsed),
-          startedAt: new Date(att.startedAt).toISOString(),
+          startedAt: startToUse.toISOString(),
           completedAt: att.completedAt ? new Date(att.completedAt).toISOString() : null,
         };
       }
 
       if (att && att.status === 'IN_PROGRESS') {
+        const startToUse = officialStartTime || new Date(att.startedAt);
         return {
           teamId: t.teamId,
           teamName: t.teamName,
           status: 'IN_PROGRESS' as TimedAttemptStatus,
           elapsedMs: null,
           formattedTime: null,
-          startedAt: new Date(att.startedAt).toISOString(),
+          startedAt: startToUse.toISOString(),
           completedAt: null,
         };
       }

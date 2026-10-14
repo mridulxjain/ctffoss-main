@@ -6,6 +6,7 @@ import scoreboardRoutes from './scoreboard.routes';
 import adminChallengeRoutes from './admin.challenge.routes';
 import competitionRoutes from './competition.routes';
 import adminCompetitionRoutes from './admin.competition.routes';
+import adminTeamRoutes from './admin.team.routes';
 
 const router = Router();
 
@@ -16,6 +17,7 @@ router.use('/scoreboard', scoreboardRoutes);
 router.use('/competition', competitionRoutes);
 router.use('/admin/challenges', adminChallengeRoutes);
 router.use('/admin/competition', adminCompetitionRoutes);
+router.use('/admin/teams', adminTeamRoutes);
 
 // Health check endpoint
 router.get('/health', (_req, res) => {

@@ -2,11 +2,21 @@ import { Router } from 'express';
 import { authController } from '../controllers/auth.controller';
 import { validateBody } from '../middleware/validate';
 import { devLoginSchema } from '../validators/index';
+import { authLimiter, sessionLimiter } from '../middleware/rateLimiter';
 
 const router = Router();
 
-router.post('/dev-login', validateBody(devLoginSchema), authController.devLogin);
-router.get('/me', authController.getMe);
+// OIDC Authentication Endpoints
+router.get('/login', authLimiter, authController.oidcLogin);
+router.get('/callback', authLimiter, authController.oidcCallback);
+
+// Session State and Logout
+router.get('/me', sessionLimiter, authController.getMe);
 router.post('/logout', authController.logout);
 
+// Development Only Persona Authentication
+router.get('/dev-personas', authController.getDevPersonas);
+router.post('/dev-login', authLimiter, validateBody(devLoginSchema), authController.devLogin);
+
 export default router;
+

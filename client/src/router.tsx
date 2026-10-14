@@ -1,6 +1,7 @@
 import React from 'react';
 import { createBrowserRouter, Navigate } from 'react-router-dom';
 import { AppLayout } from './components/layout/AppLayout';
+import { DashboardPage } from './pages/DashboardPage';
 import { ChallengesPage } from './pages/ChallengesPage';
 import { ScoreboardPage } from './pages/ScoreboardPage';
 import { CompetitionLeaderboardPage } from './pages/CompetitionLeaderboardPage';
@@ -15,6 +16,10 @@ export const router = createBrowserRouter([
     children: [
       {
         index: true,
+        element: <ChallengesPage />,
+      },
+      {
+        path: 'dashboard',
         element: <Navigate to="/challenges" replace />,
       },
       {
@@ -23,7 +28,7 @@ export const router = createBrowserRouter([
       },
       {
         path: 'scoreboard',
-        element: <ScoreboardPage />,
+        element: <Navigate to="/competition/leaderboard" replace />,
       },
       {
         path: 'competition/leaderboard',

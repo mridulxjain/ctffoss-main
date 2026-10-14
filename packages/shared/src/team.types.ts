@@ -19,6 +19,8 @@ export interface TeamDTO {
   name: string;
   externalId?: string | null;
   valenfindTeamId?: string | null;
+  isReady?: boolean;
+  readyAt?: string | null;
   totalScore: number;
   members: TeamMemberDTO[];
   solvesCount: number;
@@ -26,4 +28,22 @@ export interface TeamDTO {
   solves?: TeamSolveDTO[];
   rank?: number;
   createdAt: string;
+}
+
+export interface AdminTeamListItemDTO {
+  id: string;
+  name: string;
+  externalId: string | null;
+  valenfindTeamId: string | null;
+  isReady?: boolean;
+  readyAt?: string | null;
+  membersCount: number;
+  totalScore: number;
+  isSolved?: boolean;
+  attemptStatus?: 'NOT_STARTED' | 'IN_PROGRESS' | 'COMPLETED';
+  createdAt: string;
+}
+
+export interface UpdateTeamValenfindMappingRequest {
+  valenfindTeamId: string | null;
 }

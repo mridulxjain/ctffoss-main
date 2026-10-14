@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
-import { api } from '../lib/api';
+import { api, purgeLegacyStorage } from '../lib/api';
 import type { UserDTO, Role } from '@fossctf/shared';
 
 interface TeamSession {
@@ -27,8 +27,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const refreshSession = async () => {
     try {
       const data = await api.get('/auth/me');
-      setUser(data.user);
-      setTeam(data.team);
+      if (data?.user) {
+        setUser(data.user);
+        setTeam(data.team);
+      } else {
+        setUser(null);
+        setTeam(null);
+      }
     } catch {
       setUser(null);
       setTeam(null);
@@ -58,21 +63,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   useEffect(() => {
-    // Initial fetch, auto-login with default dev user (Alice) if not logged in
-    (async () => {
-      try {
-        const data = await api.get('/auth/me');
-        if (data.user) {
-          setUser(data.user);
-          setTeam(data.team);
-          setIsLoading(false);
-        } else {
-          await loginDev('USER', 'alice_sec', 'alice@university.edu');
-        }
-      } catch {
-        setIsLoading(false);
-      }
-    })();
+    // Clean up any legacy token artifacts from browser storage
+    purgeLegacyStorage();
+
+    // Query server for active session (via HttpOnly first-party cookie)
+    refreshSession();
   }, []);
 
   return (

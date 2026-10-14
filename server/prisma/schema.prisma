@@ -1,6 +1,7 @@
 datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
 }
 
 generator client {
@@ -51,6 +52,8 @@ model Team {
   attempts      CompetitionAttempt[]
   totalScore    Int                    @default(0)
   lastSolveAt   DateTime?
+  isReady       Boolean                @default(false)
+  readyAt       DateTime?
   createdAt     DateTime               @default(now())
   updatedAt     DateTime               @updatedAt
 
