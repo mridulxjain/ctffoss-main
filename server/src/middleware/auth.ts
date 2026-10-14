@@ -26,7 +26,12 @@ export async function authenticate(req: Request, res: Response, next: NextFuncti
 
       // Re-validate against authoritative database state if user exists to prevent stale teamId / role
       try {
-        const liveUser = await dbService.getUser(payload.id);
+        const liveUser = await Promise.race([
+          dbService.getUser(payload.id),
+          new Promise<null>((_, reject) =>
+            setTimeout(() => reject(new Error('User refresh timeout')), 2500)
+          ),
+        ]);
         if (liveUser) {
           req.user.teamId = liveUser.teamId;
           req.user.role = liveUser.role;

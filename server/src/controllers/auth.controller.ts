@@ -18,11 +18,13 @@ function getOidcTxCookieName(): string {
 }
 
 function getSessionCookieOptions(maxAge?: number) {
-  const isSecure = isProductionEnv() || config.cookieSameSite === 'none';
+  const isProd = isProductionEnv();
+  const isSecure = isProd || config.cookieSameSite === 'none';
+  const sameSite = config.cookieSameSite === 'none' || isProd ? 'none' : 'lax';
   return {
     httpOnly: true,
     secure: isSecure,
-    sameSite: config.cookieSameSite,
+    sameSite: sameSite as 'none' | 'lax',
     path: '/',
     ...(maxAge ? { maxAge } : {}),
   };
@@ -47,9 +49,12 @@ export const authController = {
    * stores transaction state in signed HttpOnly cookie, and redirects to provider.
    */
   async oidcLogin(req: Request, res: Response): Promise<void> {
+    const loginStart = Date.now();
     try {
       const { authorizationUrl, signedTxCookie } =
         await oidcService.createAuthorizationRequest();
+
+      const authGenMs = Date.now() - loginStart;
 
       // Bind transaction state to initiating browser via signed HttpOnly cookies (with both Host-prefixed and standard fallbacks)
       const txOptions = getOidcTxCookieOptions(15 * 60 * 1000);
@@ -57,6 +62,8 @@ export const authController = {
       if (getOidcTxCookieName() !== 'oidc_tx') {
         res.cookie('oidc_tx', signedTxCookie, txOptions);
       }
+
+      console.log(`⏱️  [OIDC_LOGIN] duration=${authGenMs}ms status=307 cookieSet=${getOidcTxCookieName()}`);
 
       if (req.headers.accept?.includes('application/json')) {
         res.json({
@@ -70,6 +77,7 @@ export const authController = {
 
       res.redirect(authorizationUrl);
     } catch (err: any) {
+      console.error(`❌ [OIDC_LOGIN:ERROR] duration=${Date.now() - loginStart}ms message=${err.message}`);
       res.status(500).json({
         success: false,
         error: {
@@ -86,6 +94,7 @@ export const authController = {
    * and establishes internal CTF session cookie.
    */
   async oidcCallback(req: Request, res: Response): Promise<void> {
+    const callbackStart = Date.now();
     const queryState = typeof req.query.state === 'string' ? req.query.state : undefined;
     const rawTxCookie =
       req.cookies?.[getOidcTxCookieName()] ||
@@ -94,9 +103,15 @@ export const authController = {
 
     // Verify transaction from cookie OR fallback to cryptographically signed query state
     let tx = oidcService.verifyTransactionCookie(rawTxCookie);
+    let usedFallback = false;
     if (!tx && queryState) {
       tx = oidcService.verifyTransactionCookie(queryState);
+      if (tx) usedFallback = true;
     }
+
+    const txCheckMs = Date.now() - callbackStart;
+    const cookieNames = Object.keys(req.cookies || {}).join(',') || 'none';
+    console.log(`⏱️  [OIDC_CALLBACK:TX] duration=${txCheckMs}ms found=${!!tx} fallback=${usedFallback} cookies=${cookieNames}`);
 
     // Clear transaction cookies immediately upon callback
     const clearOptions = getSessionCookieOptions();
@@ -109,6 +124,7 @@ export const authController = {
     res.clearCookie('oidc_tx', clearTxOptions);
 
     if (!tx) {
+      console.warn(`⚠️  [OIDC_CALLBACK:TX_MISSING] duration=${Date.now() - callbackStart}ms code=INVALID_TRANSACTION`);
       res.status(400).json({
         success: false,
         error: {
@@ -137,12 +153,16 @@ export const authController = {
         callbackUrl = new URL(req.originalUrl || req.url, `${protocol}://${host}`);
       }
 
+      const tokenExchangeStart = Date.now();
       const claims = await oidcService.processCallback({
         callbackUrl,
         transaction: tx,
       });
+      const tokenExchangeMs = Date.now() - tokenExchangeStart;
+      console.log(`⏱️  [OIDC_CALLBACK:TOKEN_EXCHANGE] duration=${tokenExchangeMs}ms status=success`);
 
       if (!claims.sub) {
+        console.warn(`⚠️  [OIDC_CALLBACK:INVALID_CLAIMS] duration=${Date.now() - callbackStart}ms missing=sub`);
         res.status(400).json({
           success: false,
           error: {
@@ -154,6 +174,7 @@ export const authController = {
       }
 
       // Step 1: Find existing account by stable OIDC subject
+      const dbLookupStart = Date.now();
       let user = await dbService.getUserByOidcSub(claims.sub);
 
       if (!user) {
@@ -161,6 +182,7 @@ export const authController = {
         if (claims.email) {
           const existingByEmail = await dbService.getUserByEmail(claims.email);
           if (existingByEmail && existingByEmail.oidcSub !== claims.sub) {
+            console.warn(`⚠️  [OIDC_CALLBACK:CONFLICT] duration=${Date.now() - callbackStart}ms code=ACCOUNT_CONFLICT_UNLINKED`);
             res.status(409).json({
               success: false,
               error: {
@@ -200,6 +222,9 @@ export const authController = {
         });
       }
 
+      const dbLookupMs = Date.now() - dbLookupStart;
+      console.log(`⏱️  [OIDC_CALLBACK:DB] duration=${dbLookupMs}ms userResolved=true`);
+
       // Issue internal CTF session token
       const sessionToken = signToken({
         id: user.id,
@@ -218,6 +243,7 @@ export const authController = {
       const team = user.teamId ? await dbService.getTeam(user.teamId) : null;
 
       if (req.headers.accept?.includes('application/json')) {
+        console.log(`⏱️  [OIDC_CALLBACK:COMPLETE] totalDuration=${Date.now() - callbackStart}ms format=json`);
         res.json({
           success: true,
           data: {
@@ -240,6 +266,7 @@ export const authController = {
       const forwardHost = req.get('x-forwarded-host') || req.get('host');
       const isTrustedHost = forwardHost && (forwardHost.includes('fossclub.tech') || forwardHost.includes('vercel.app'));
       const targetFrontend = isTrustedHost ? `https://${forwardHost}` : config.frontendUrl;
+      console.log(`⏱️  [OIDC_CALLBACK:COMPLETE] totalDuration=${Date.now() - callbackStart}ms redirect=${targetFrontend}`);
       res.redirect(targetFrontend);
     } catch (err: any) {
       const code = err.code || 'OIDC_CALLBACK_FAILED';
@@ -247,6 +274,7 @@ export const authController = {
         code === 'INVALID_STATE' || code === 'OIDC_CALLBACK_ERROR' || code === 'INVALID_CLAIMS'
           ? 400
           : 500;
+      console.error(`❌ [OIDC_CALLBACK:FAILED] totalDuration=${Date.now() - callbackStart}ms code=${code} status=${status} message=${err.message}`);
       res.status(status).json({
         success: false,
         error: {
@@ -371,7 +399,9 @@ export const authController = {
   },
 
   async getMe(req: Request, res: Response): Promise<void> {
+    const meStart = Date.now();
     if (!req.user) {
+      console.log(`⏱️  [AUTH_ME] duration=${Date.now() - meStart}ms authenticated=false`);
       res.json({
         success: true,
         data: { user: null, team: null },
@@ -379,38 +409,48 @@ export const authController = {
       return;
     }
 
-    const user = await dbService.getUser(req.user.id);
-    if (!user) {
+    try {
+      const user = await dbService.getUser(req.user.id);
+      if (!user) {
+        console.log(`⏱️  [AUTH_ME] duration=${Date.now() - meStart}ms authenticated=false reason=user_not_found`);
+        res.json({
+          success: true,
+          data: { user: null, team: null },
+        });
+        return;
+      }
+
+      const team = user.teamId ? await dbService.getTeam(user.teamId) : null;
+      console.log(`⏱️  [AUTH_ME] duration=${Date.now() - meStart}ms authenticated=true hasTeam=${!!team}`);
+
       res.json({
         success: true,
-        data: { user: null, team: null },
-      });
-      return;
-    }
-
-    const team = user.teamId ? await dbService.getTeam(user.teamId) : null;
-
-    res.json({
-      success: true,
-      data: {
-        user: {
-          id: user.id,
-          email: user.email,
-          username: user.username,
-          role: user.role,
-          teamId: user.teamId,
-          teamName: team?.name || null,
-          createdAt: user.createdAt.toISOString(),
+        data: {
+          user: {
+            id: user.id,
+            email: user.email,
+            username: user.username,
+            role: user.role,
+            teamId: user.teamId,
+            teamName: team?.name || null,
+            createdAt: user.createdAt.toISOString(),
+          },
+          team: team
+            ? {
+                id: team.id,
+                name: team.name,
+                totalScore: team.totalScore,
+              }
+            : null,
         },
-        team: team
-          ? {
-              id: team.id,
-              name: team.name,
-              totalScore: team.totalScore,
-            }
-          : null,
-      },
-    });
+      });
+    } catch (err: any) {
+      console.error(`❌ [AUTH_ME:ERROR] duration=${Date.now() - meStart}ms message=${err.message}`);
+      res.status(500).json({
+        success: false,
+        error: { message: 'Failed to retrieve user session', code: 'SESSION_RETRIEVAL_FAILED' },
+      });
+    }
   },
 
   async logout(_req: Request, res: Response): Promise<void> {
