@@ -17,7 +17,7 @@ export const Navbar: React.FC = () => {
     api.get('/competition').then(setCompConfig).catch(() => null);
     const interval = setInterval(() => {
       api.get('/competition').then(setCompConfig).catch(() => null);
-    }, 10000);
+    }, 30000);
     return () => clearInterval(interval);
   }, []);
 
@@ -211,15 +211,36 @@ export const Navbar: React.FC = () => {
             </div>
           )}
 
-          {/* User Sign In / Logout */}
+          {/* User Sign In / Profile / Logout */}
           {user ? (
-            <button
-              onClick={() => logout()}
-              title="Sign out"
-              className="p-2 rounded text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800 border border-transparent hover:border-zinc-700 transition-colors"
-            >
-              <LogOut className="w-4 h-4" />
-            </button>
+            <div className="flex items-center gap-2.5">
+              <div className="flex items-center gap-2 px-2.5 py-1 rounded bg-zinc-900 border border-zinc-800">
+                {user.avatarUrl ? (
+                  <img
+                    src={user.avatarUrl}
+                    alt={user.username}
+                    className="w-6 h-6 rounded-full border border-emerald-500/50 object-cover"
+                    onError={(e) => {
+                      (e.target as HTMLElement).style.display = 'none';
+                    }}
+                  />
+                ) : (
+                  <div className="w-6 h-6 rounded-full bg-emerald-950/80 border border-emerald-500/50 flex items-center justify-center font-mono text-[10px] font-bold text-emerald-400">
+                    {user.username.slice(0, 2).toUpperCase()}
+                  </div>
+                )}
+                <span className="font-mono text-xs text-zinc-200 font-semibold max-w-[110px] truncate">
+                  {user.username}
+                </span>
+              </div>
+              <button
+                onClick={() => logout()}
+                title="Sign out"
+                className="p-1.5 rounded text-zinc-400 hover:text-rose-400 hover:bg-zinc-800 border border-zinc-800 hover:border-zinc-700 transition-colors"
+              >
+                <LogOut className="w-4 h-4" />
+              </button>
+            </div>
           ) : (
             <a
               href={getLoginUrl()}

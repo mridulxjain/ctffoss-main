@@ -75,7 +75,7 @@ export const ChallengesPage: React.FC = () => {
 
   useEffect(() => {
     fetchData();
-    const interval = setInterval(fetchData, 6000);
+    const interval = setInterval(fetchData, 20000);
     return () => clearInterval(interval);
   }, [team?.id]);
 

@@ -7,6 +7,7 @@ export interface UserDTO {
   role: Role;
   teamId: string | null;
   teamName?: string | null;
+  avatarUrl?: string | null;
   createdAt: string;
 }
 

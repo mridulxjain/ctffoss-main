@@ -255,6 +255,7 @@ export const authController = {
               role: user.role,
               teamId: user.teamId,
               teamName: team?.name || null,
+              avatarUrl: user.avatarUrl || null,
               createdAt: user.createdAt.toISOString(),
             },
           },
@@ -433,6 +434,7 @@ export const authController = {
             role: user.role,
             teamId: user.teamId,
             teamName: team?.name || null,
+            avatarUrl: user.avatarUrl || null,
             createdAt: user.createdAt.toISOString(),
           },
           team: team

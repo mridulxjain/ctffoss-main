@@ -42,7 +42,7 @@ export const CompetitionLeaderboardPage: React.FC = () => {
 
   useEffect(() => {
     fetchLeaderboard();
-    const interval = setInterval(fetchLeaderboard, 8000);
+    const interval = setInterval(fetchLeaderboard, 20000);
     return () => clearInterval(interval);
   }, []);
 
