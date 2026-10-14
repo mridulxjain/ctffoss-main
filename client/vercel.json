@@ -3,7 +3,7 @@
   "rewrites": [
     {
       "source": "/api/:path*",
-      "destination": "https://<ctf-backend-placeholder>.vercel.app/api/:path*"
+      "destination": "https://ctffoss-backend.vercel.app/api/:path*"
     },
     {
       "source": "/(.*)",
