@@ -17,9 +17,10 @@ export const Navbar: React.FC = () => {
   ];
 
   const devPersonas: Array<{ role: Role; username: string; email: string; label: string }> = [
-    { role: 'USER', username: 'alice_sec', email: 'alice@university.edu', label: 'Alice (Team 1)' },
-    { role: 'USER', username: 'bob_0x', email: 'bob@university.edu', label: 'Bob (Team 1)' },
-    { role: 'USER', username: 'charlie_hax', email: 'charlie@university.edu', label: 'Charlie (Team 2)' },
+    { role: 'USER', username: 'alice_sec', email: 'alice@university.edu', label: 'Alice (Binary Beasts)' },
+    { role: 'USER', username: 'bob_0x', email: 'bob@university.edu', label: 'Bob (Binary Beasts)' },
+    { role: 'USER', username: 'dave_bravo', email: 'dave@university.edu', label: 'Dave (Null Pointers)' },
+    { role: 'USER', username: 'charlie_solo', email: 'charlie@university.edu', label: 'Charlie (No Team)' },
     { role: 'ADMIN', username: 'foss_admin', email: 'admin@fossclub.tech', label: 'Platform Admin' },
   ];
 

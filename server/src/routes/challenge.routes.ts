@@ -8,6 +8,8 @@ const router = Router();
 
 router.get('/', challengeController.list);
 router.get('/:id', challengeController.getById);
+router.get('/:id/session', requireAuth, requireTeam, challengeController.getSession);
+router.post('/:id/start', requireAuth, requireTeam, challengeController.startSession);
 router.post(
   '/:id/submit',
   requireAuth,

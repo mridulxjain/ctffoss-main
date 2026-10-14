@@ -38,17 +38,19 @@ model User {
 }
 
 model Team {
-  id            String         @id @default(uuid())
-  name          String         @unique
-  inviteCode    String         @unique
+  id            String                 @id @default(uuid())
+  name          String                 @unique
+  externalId    String?                @unique   // Stable external identifier from FOSS Club identity system
+  inviteCode    String?                @unique   // Legacy/optional; team membership is managed externally
   members       User[]
   submissions   Submission[]
   solves        Solve[]
   hintUnlocks   HintUnlock[]
-  totalScore    Int            @default(0)
+  sessions      TeamChallengeSession[]
+  totalScore    Int                    @default(0)
   lastSolveAt   DateTime?
-  createdAt     DateTime       @default(now())
-  updatedAt     DateTime       @updatedAt
+  createdAt     DateTime               @default(now())
+  updatedAt     DateTime               @updatedAt
 
   @@index([totalScore(sort: Desc), lastSolveAt(sort: Asc)])
 }
@@ -64,25 +66,48 @@ model Category {
 }
 
 model Challenge {
-  id            String         @id @default(uuid())
-  slug          String         @unique
-  title         String
-  description   String
-  categoryId    String
-  category      Category       @relation(fields: [categoryId], references: [id])
-  difficulty    Difficulty     @default(EASY)
-  points        Int            @default(100)
-  isPublished   Boolean        @default(false)
-  author        String?
-  sortOrder     Int            @default(0)
-  flags         Flag[]
-  hints         Hint[]
-  submissions   Submission[]
-  solves        Solve[]
-  createdAt     DateTime       @default(now())
-  updatedAt     DateTime       @updatedAt
+  id              String                 @id @default(uuid())
+  slug            String                 @unique
+  title           String
+  description     String
+  categoryId      String
+  category        Category               @relation(fields: [categoryId], references: [id])
+  difficulty      Difficulty             @default(EASY)
+  points          Int                    @default(100)
+  isPublished     Boolean                @default(false)
+  isTimed         Boolean                @default(false) // Whether challenge has a team time limit
+  durationMinutes Int?                   @default(30)   // Shared duration in minutes if timed
+  author          String?
+  sortOrder       Int                    @default(0)
+  flags           Flag[]
+  hints           Hint[]
+  submissions     Submission[]
+  solves          Solve[]
+  sessions        TeamChallengeSession[]
+  createdAt       DateTime               @default(now())
+  updatedAt       DateTime               @updatedAt
 
   @@index([categoryId, isPublished])
+}
+
+model TeamChallengeSession {
+  id           String    @id @default(uuid())
+  teamId       String
+  team         Team      @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  challengeId  String
+  challenge    Challenge @relation(fields: [challengeId], references: [id], onDelete: Cascade)
+  status       String    @default("ACTIVE") // ACTIVE, COMPLETED, EXPIRED
+  startedAt    DateTime  @default(now())
+  expiresAt    DateTime
+  completedAt  DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  // Authoritative database constraint: Exactly one shared session per team per challenge
+  @@unique([teamId, challengeId])
+  @@index([teamId])
+  @@index([challengeId])
+  @@index([status])
 }
 
 model Flag {

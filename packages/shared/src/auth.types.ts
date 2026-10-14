@@ -15,7 +15,6 @@ export interface AuthSessionResponse {
   team: {
     id: string;
     name: string;
-    inviteCode: string;
     totalScore: number;
   } | null;
 }

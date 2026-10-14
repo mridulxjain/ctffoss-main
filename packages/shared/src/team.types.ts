@@ -8,18 +8,10 @@ export interface TeamMemberDTO {
 export interface TeamDTO {
   id: string;
   name: string;
-  inviteCode: string;
+  externalId?: string | null;
   totalScore: number;
   members: TeamMemberDTO[];
   solvesCount: number;
   rank?: number;
   createdAt: string;
-}
-
-export interface CreateTeamRequest {
-  name: string;
-}
-
-export interface JoinTeamRequest {
-  inviteCode: string;
 }

@@ -69,7 +69,6 @@ export const authController = {
           ? {
               id: team.id,
               name: team.name,
-              inviteCode: team.inviteCode,
               totalScore: team.totalScore,
             }
           : null,
@@ -113,7 +112,6 @@ export const authController = {
           ? {
               id: team.id,
               name: team.name,
-              inviteCode: team.inviteCode,
               totalScore: team.totalScore,
             }
           : null,

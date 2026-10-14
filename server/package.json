@@ -5,6 +5,7 @@
   "main": "dist/index.js",
   "scripts": {
     "dev": "tsx watch src/index.ts",
+    "test": "tsx --test test/competition.test.ts",
     "build": "tsc && npm run db:generate",
     "start": "node dist/index.js",
     "db:generate": "prisma generate",

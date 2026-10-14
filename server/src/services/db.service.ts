@@ -1,6 +1,6 @@
 import { prisma } from '../lib/prisma';
-import { hashFlag, generateInviteCode } from '../utils/crypto';
-import { Role, Difficulty } from '@fossctf/shared';
+import { hashFlag } from '../utils/crypto';
+import { Role, Difficulty, SessionStatus, TeamChallengeSessionDTO } from '@fossctf/shared';
 
 export interface DBUser {
   id: string;
@@ -14,7 +14,7 @@ export interface DBUser {
 export interface DBTeam {
   id: string;
   name: string;
-  inviteCode: string;
+  externalId?: string | null;
   totalScore: number;
   lastSolveAt: Date | null;
   members: DBUser[];
@@ -45,6 +45,8 @@ export interface DBChallenge {
   difficulty: Difficulty;
   points: number;
   isPublished: boolean;
+  isTimed: boolean;
+  durationMinutes: number | null;
   author: string | null;
   sortOrder: number;
   flagHash: string;
@@ -61,6 +63,16 @@ export interface DBSolve {
   solvedAt: Date;
 }
 
+export interface DBTeamChallengeSession {
+  id: string;
+  teamId: string;
+  challengeId: string;
+  status: 'ACTIVE' | 'COMPLETED' | 'EXPIRED';
+  startedAt: Date;
+  expiresAt: Date;
+  completedAt: Date | null;
+}
+
 /**
  * In-memory fallback dataset for seamless zero-config local development
  * when PostgreSQL is not yet running or configured.
@@ -71,6 +83,7 @@ class MemoryCTFStore {
   categories: DBCategory[] = [];
   challenges: DBChallenge[] = [];
   solves: DBSolve[] = [];
+  sessions: Map<string, DBTeamChallengeSession> = new Map(); // key: `${teamId}:${challengeId}`
   unlockedHints: Set<string> = new Set(); // "teamId:hintId"
 
   constructor() {
@@ -112,8 +125,7 @@ class MemoryCTFStore {
 
     this.categories = [catMisc, catWeb, catCrypto, catRev, catForensics];
 
-    // Minimal development verification challenge to validate end-to-end scoring in sandbox mode.
-    // In production, real competition challenges are authored and published by event administrators.
+    // Minimal development challenges: 1 untimed, 1 timed team challenge
     this.challenges = [
       {
         id: 'chal-dev-sample-1',
@@ -125,6 +137,8 @@ class MemoryCTFStore {
         difficulty: 'EASY',
         points: 100,
         isPublished: true,
+        isTimed: false,
+        durationMinutes: null,
         author: 'FOSS Platform Team',
         sortOrder: 1,
         flagHash: hashFlag('FOSSCTF{dev_verification_flag_2026}'),
@@ -138,9 +152,34 @@ class MemoryCTFStore {
           },
         ],
       },
+      {
+        id: 'chal-timed-sample-2',
+        slug: 'rapid-incident-response',
+        title: 'Rapid Incident Response (Timed)',
+        description:
+          'A simulated security incident has been triggered. Any team member can start the challenge, initiating a shared 30-minute timer for the entire squad.\n\nAll teammates see the exact same deadline and synchronized remaining time.',
+        categoryId: catWeb.id,
+        difficulty: 'MEDIUM',
+        points: 150,
+        isPublished: true,
+        isTimed: true,
+        durationMinutes: 30,
+        author: 'FOSS Security Squad',
+        sortOrder: 2,
+        flagHash: hashFlag('FOSSCTF{synchronized_team_session_2026}'),
+        hints: [
+          {
+            id: 'hint-timed-1',
+            challengeId: 'chal-timed-sample-2',
+            content: 'Mitigation key: FOSSCTF{synchronized_team_session_2026}',
+            cost: 0,
+            sortOrder: 1,
+          },
+        ],
+      },
     ];
 
-    // Development user personas for local testing
+    // Development user personas simulating external identity provider mapping
     const adminUser: DBUser = {
       id: 'usr-admin-01',
       email: 'admin@fossclub.tech',
@@ -171,9 +210,18 @@ class MemoryCTFStore {
     const userCharlie: DBUser = {
       id: 'usr-charlie-04',
       email: 'charlie@university.edu',
-      username: 'charlie_hax',
+      username: 'charlie_solo',
       role: 'USER',
-      teamId: 'team-null-pointers',
+      teamId: null, // Test persona without any team
+      createdAt: new Date(),
+    };
+
+    const userDave: DBUser = {
+      id: 'usr-dave-05',
+      email: 'dave@university.edu',
+      username: 'dave_bravo',
+      role: 'USER',
+      teamId: 'team-null-pointers', // Member of Team 2
       createdAt: new Date(),
     };
 
@@ -181,11 +229,12 @@ class MemoryCTFStore {
     this.users.set(userAlice.id, userAlice);
     this.users.set(userBob.id, userBob);
     this.users.set(userCharlie.id, userCharlie);
+    this.users.set(userDave.id, userDave);
 
     const team1: DBTeam = {
       id: 'team-binary-beasts',
       name: 'Binary Beasts',
-      inviteCode: 'BEASTS2026',
+      externalId: 'ext-team-alpha',
       totalScore: 0,
       lastSolveAt: null,
       members: [userAlice, userBob],
@@ -195,18 +244,18 @@ class MemoryCTFStore {
     const team2: DBTeam = {
       id: 'team-null-pointers',
       name: 'Null Pointers',
-      inviteCode: 'NULLPTR101',
+      externalId: 'ext-team-bravo',
       totalScore: 0,
       lastSolveAt: null,
-      members: [userCharlie],
+      members: [userDave],
       createdAt: new Date(Date.now() - 86400000),
     };
 
     this.teams.set(team1.id, team1);
     this.teams.set(team2.id, team2);
 
-    // Initial Solves start empty - no fabricated competition scores
     this.solves = [];
+    this.sessions = new Map();
   }
 }
 
@@ -217,18 +266,13 @@ let isPrismaAvailable: boolean | null = null;
 async function checkPrisma(): Promise<boolean> {
   if (isPrismaAvailable !== null) return isPrismaAvailable;
   try {
-    // Quick test query with a strict 1-second timeout
     await Promise.race([
       prisma.$queryRaw`SELECT 1`,
       new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout')), 1000)),
     ]);
     isPrismaAvailable = true;
-    console.log('[Database] Connected to PostgreSQL via Prisma.');
   } catch {
     isPrismaAvailable = false;
-    console.log(
-      '[Database] Running in in-memory fallback store for local development. Configure DATABASE_URL in server/.env to use PostgreSQL.'
-    );
   }
   return isPrismaAvailable;
 }
@@ -271,26 +315,6 @@ export const dbService = {
     return null;
   },
 
-  async getUserByUsername(username: string): Promise<DBUser | null> {
-    const hasDb = await checkPrisma();
-    if (hasDb) {
-      const u = await prisma.user.findUnique({ where: { username } });
-      if (!u) return null;
-      return {
-        id: u.id,
-        email: u.email,
-        username: u.username,
-        role: u.role as Role,
-        teamId: u.teamId,
-        createdAt: u.createdAt,
-      };
-    }
-    for (const u of memoryStore.users.values()) {
-      if (u.username.toLowerCase() === username.toLowerCase()) return u;
-    }
-    return null;
-  },
-
   async createUser(data: {
     email: string;
     username: string;
@@ -329,23 +353,6 @@ export const dbService = {
     return newUser;
   },
 
-  async updateUserTeam(userId: string, teamId: string | null): Promise<void> {
-    const hasDb = await checkPrisma();
-    if (hasDb) {
-      await prisma.user.update({
-        where: { id: userId },
-        data: { teamId },
-      });
-      return;
-    }
-
-    const u = memoryStore.users.get(userId);
-    if (u) {
-      u.teamId = teamId;
-      memoryStore.users.set(userId, u);
-    }
-  },
-
   async getTeam(id: string): Promise<DBTeam | null> {
     const hasDb = await checkPrisma();
     if (hasDb) {
@@ -357,7 +364,7 @@ export const dbService = {
       return {
         id: t.id,
         name: t.name,
-        inviteCode: t.inviteCode,
+        externalId: t.externalId,
         totalScore: t.totalScore,
         lastSolveAt: t.lastSolveAt,
         members: t.members.map((m) => ({
@@ -373,43 +380,8 @@ export const dbService = {
     }
     const t = memoryStore.teams.get(id);
     if (!t) return null;
-    // ensure members are up to date
     t.members = Array.from(memoryStore.users.values()).filter((u) => u.teamId === t.id);
     return t;
-  },
-
-  async getTeamByInviteCode(inviteCode: string): Promise<DBTeam | null> {
-    const hasDb = await checkPrisma();
-    if (hasDb) {
-      const t = await prisma.team.findUnique({
-        where: { inviteCode },
-        include: { members: true },
-      });
-      if (!t) return null;
-      return {
-        id: t.id,
-        name: t.name,
-        inviteCode: t.inviteCode,
-        totalScore: t.totalScore,
-        lastSolveAt: t.lastSolveAt,
-        members: t.members.map((m) => ({
-          id: m.id,
-          email: m.email,
-          username: m.username,
-          role: m.role as Role,
-          teamId: m.teamId,
-          createdAt: m.createdAt,
-        })),
-        createdAt: t.createdAt,
-      };
-    }
-    for (const t of memoryStore.teams.values()) {
-      if (t.inviteCode.toUpperCase() === inviteCode.trim().toUpperCase()) {
-        t.members = Array.from(memoryStore.users.values()).filter((u) => u.teamId === t.id);
-        return t;
-      }
-    }
-    return null;
   },
 
   async getTeamByName(name: string): Promise<DBTeam | null> {
@@ -423,7 +395,7 @@ export const dbService = {
       return {
         id: t.id,
         name: t.name,
-        inviteCode: t.inviteCode,
+        externalId: t.externalId,
         totalScore: t.totalScore,
         lastSolveAt: t.lastSolveAt,
         members: t.members.map((m) => ({
@@ -445,47 +417,12 @@ export const dbService = {
     return null;
   },
 
-  async createTeam(name: string, creatorId: string): Promise<DBTeam> {
-    const inviteCode = generateInviteCode();
-    const hasDb = await checkPrisma();
-    if (hasDb) {
-      const newTeam = await prisma.$transaction(async (tx) => {
-        const t = await tx.team.create({
-          data: {
-            name,
-            inviteCode,
-          },
-        });
-        await tx.user.update({
-          where: { id: creatorId },
-          data: { teamId: t.id },
-        });
-        return t;
-      });
-      return (await this.getTeam(newTeam.id))!;
-    }
-
-    const newTeam: DBTeam = {
-      id: `team-${Date.now()}`,
-      name,
-      inviteCode,
-      totalScore: 0,
-      lastSolveAt: null,
-      members: [],
-      createdAt: new Date(),
-    };
-    memoryStore.teams.set(newTeam.id, newTeam);
-    await this.updateUserTeam(creatorId, newTeam.id);
-    return (await this.getTeam(newTeam.id))!;
-  },
-
   async listCategories(): Promise<DBCategory[]> {
     const hasDb = await checkPrisma();
     if (hasDb) {
-      const cats = await prisma.category.findMany({
+      return await prisma.category.findMany({
         orderBy: { sortOrder: 'asc' },
       });
-      return cats;
     }
     return memoryStore.categories;
   },
@@ -498,27 +435,74 @@ export const dbService = {
         include: {
           category: true,
           solves: true,
+          sessions: teamId ? { where: { teamId } } : false,
         },
         orderBy: [{ categoryId: 'asc' }, { sortOrder: 'asc' }],
       });
 
-      return chals.map((c) => ({
-        id: c.id,
-        slug: c.slug,
-        title: c.title,
-        categoryId: c.categoryId,
-        categoryName: c.category.name,
-        difficulty: c.difficulty,
-        points: c.points,
-        solveCount: c.solves.length,
-        isSolvedByTeam: teamId ? c.solves.some((s) => s.teamId === teamId) : false,
-        author: c.author,
-      }));
+      const now = Date.now();
+      return chals.map((c) => {
+        const isSolvedByTeam = teamId ? c.solves.some((s) => s.teamId === teamId) : false;
+        let sessionStatus: SessionStatus | undefined;
+        if (c.isTimed && teamId) {
+          if (isSolvedByTeam) {
+            sessionStatus = 'COMPLETED';
+          } else {
+            const teamSession = Array.isArray(c.sessions) ? c.sessions[0] : null;
+            if (!teamSession) {
+              sessionStatus = 'NOT_STARTED';
+            } else if (teamSession.status === 'COMPLETED') {
+              sessionStatus = 'COMPLETED';
+            } else if (teamSession.expiresAt.getTime() < now || teamSession.status === 'EXPIRED') {
+              sessionStatus = 'EXPIRED';
+            } else {
+              sessionStatus = 'ACTIVE';
+            }
+          }
+        }
+
+        return {
+          id: c.id,
+          slug: c.slug,
+          title: c.title,
+          categoryId: c.categoryId,
+          categoryName: c.category.name,
+          difficulty: c.difficulty,
+          points: c.points,
+          solveCount: c.solves.length,
+          isSolvedByTeam,
+          isTimed: c.isTimed,
+          durationMinutes: c.durationMinutes,
+          sessionStatus,
+          author: c.author,
+        };
+      });
     }
 
+    const now = Date.now();
     return memoryStore.challenges.map((c) => {
       const cat = memoryStore.categories.find((k) => k.id === c.categoryId);
       const chSolves = memoryStore.solves.filter((s) => s.challengeId === c.id);
+      const isSolvedByTeam = teamId ? chSolves.some((s) => s.teamId === teamId) : false;
+
+      let sessionStatus: SessionStatus | undefined;
+      if (c.isTimed && teamId) {
+        if (isSolvedByTeam) {
+          sessionStatus = 'COMPLETED';
+        } else {
+          const session = memoryStore.sessions.get(`${teamId}:${c.id}`);
+          if (!session) {
+            sessionStatus = 'NOT_STARTED';
+          } else if (session.status === 'COMPLETED') {
+            sessionStatus = 'COMPLETED';
+          } else if (session.expiresAt.getTime() < now || session.status === 'EXPIRED') {
+            sessionStatus = 'EXPIRED';
+          } else {
+            sessionStatus = 'ACTIVE';
+          }
+        }
+      }
+
       return {
         id: c.id,
         slug: c.slug,
@@ -528,7 +512,10 @@ export const dbService = {
         difficulty: c.difficulty,
         points: c.points,
         solveCount: chSolves.length,
-        isSolvedByTeam: teamId ? chSolves.some((s) => s.teamId === teamId) : false,
+        isSolvedByTeam,
+        isTimed: c.isTimed,
+        durationMinutes: c.durationMinutes,
+        sessionStatus,
         author: c.author,
       };
     });
@@ -555,6 +542,11 @@ export const dbService = {
         unlockedHintIds = new Set(unlocks.map((u) => u.hintId));
       }
 
+      let sessionDTO: TeamChallengeSessionDTO | null = null;
+      if (c.isTimed && teamId) {
+        sessionDTO = await this.getTeamChallengeSession(teamId, challengeId);
+      }
+
       return {
         id: c.id,
         slug: c.slug,
@@ -566,6 +558,9 @@ export const dbService = {
         points: c.points,
         solveCount: c.solves.length,
         isSolvedByTeam: teamId ? c.solves.some((s) => s.teamId === teamId) : false,
+        isTimed: c.isTimed,
+        durationMinutes: c.durationMinutes,
+        session: sessionDTO,
         author: c.author,
         hints: c.hints.map((h) => ({
           id: h.id,
@@ -582,6 +577,11 @@ export const dbService = {
     const cat = memoryStore.categories.find((k) => k.id === c.categoryId);
     const chSolves = memoryStore.solves.filter((s) => s.challengeId === c.id);
 
+    let sessionDTO: TeamChallengeSessionDTO | null = null;
+    if (c.isTimed && teamId) {
+      sessionDTO = await this.getTeamChallengeSession(teamId, challengeId);
+    }
+
     return {
       id: c.id,
       slug: c.slug,
@@ -593,6 +593,9 @@ export const dbService = {
       points: c.points,
       solveCount: chSolves.length,
       isSolvedByTeam: teamId ? chSolves.some((s) => s.teamId === teamId) : false,
+      isTimed: c.isTimed,
+      durationMinutes: c.durationMinutes,
+      session: sessionDTO,
       author: c.author,
       hints: c.hints.map((h) => {
         const isUnlocked =
@@ -606,6 +609,204 @@ export const dbService = {
         };
       }),
     };
+  },
+
+  async getTeamChallengeSession(
+    teamId: string,
+    challengeId: string
+  ): Promise<TeamChallengeSessionDTO | null> {
+    const hasDb = await checkPrisma();
+    const now = Date.now();
+
+    if (hasDb) {
+      const c = await prisma.challenge.findUnique({ where: { id: challengeId } });
+      if (!c) return null;
+      if (!c.isTimed) {
+        return {
+          challengeId,
+          teamId,
+          isTimed: false,
+          status: 'NOT_STARTED',
+          startedAt: null,
+          expiresAt: null,
+          completedAt: null,
+          remainingSeconds: null,
+        };
+      }
+
+      // Check if already solved
+      const isSolved = await prisma.solve.findUnique({
+        where: { teamId_challengeId: { teamId, challengeId } },
+      });
+
+      const session = await prisma.teamChallengeSession.findUnique({
+        where: { teamId_challengeId: { teamId, challengeId } },
+      });
+
+      if (!session) {
+        return {
+          challengeId,
+          teamId,
+          isTimed: true,
+          status: isSolved ? 'COMPLETED' : 'NOT_STARTED',
+          startedAt: null,
+          expiresAt: null,
+          completedAt: null,
+          remainingSeconds: null,
+        };
+      }
+
+      let currentStatus: SessionStatus = session.status as SessionStatus;
+      if (isSolved || currentStatus === 'COMPLETED') {
+        currentStatus = 'COMPLETED';
+      } else if (session.expiresAt.getTime() <= now) {
+        currentStatus = 'EXPIRED';
+        if (session.status !== 'EXPIRED') {
+          await prisma.teamChallengeSession.update({
+            where: { id: session.id },
+            data: { status: 'EXPIRED' },
+          });
+        }
+      }
+
+      const remainingSeconds =
+        currentStatus === 'ACTIVE'
+          ? Math.max(0, Math.floor((session.expiresAt.getTime() - now) / 1000))
+          : currentStatus === 'EXPIRED'
+          ? 0
+          : null;
+
+      return {
+        challengeId,
+        teamId,
+        isTimed: true,
+        status: currentStatus,
+        startedAt: session.startedAt.toISOString(),
+        expiresAt: session.expiresAt.toISOString(),
+        completedAt: session.completedAt ? session.completedAt.toISOString() : null,
+        remainingSeconds,
+      };
+    }
+
+    const c = memoryStore.challenges.find((k) => k.id === challengeId);
+    if (!c) return null;
+    if (!c.isTimed) {
+      return {
+        challengeId,
+        teamId,
+        isTimed: false,
+        status: 'NOT_STARTED',
+        startedAt: null,
+        expiresAt: null,
+        completedAt: null,
+        remainingSeconds: null,
+      };
+    }
+
+    const isSolved = memoryStore.solves.some(
+      (s) => s.teamId === teamId && s.challengeId === challengeId
+    );
+
+    const sessionKey = `${teamId}:${challengeId}`;
+    const session = memoryStore.sessions.get(sessionKey);
+
+    if (!session) {
+      return {
+        challengeId,
+        teamId,
+        isTimed: true,
+        status: isSolved ? 'COMPLETED' : 'NOT_STARTED',
+        startedAt: null,
+        expiresAt: null,
+        completedAt: null,
+        remainingSeconds: null,
+      };
+    }
+
+    let currentStatus: SessionStatus = session.status;
+    if (isSolved || currentStatus === 'COMPLETED') {
+      currentStatus = 'COMPLETED';
+    } else if (session.expiresAt.getTime() <= now) {
+      currentStatus = 'EXPIRED';
+      session.status = 'EXPIRED';
+    }
+
+    const remainingSeconds =
+      currentStatus === 'ACTIVE'
+        ? Math.max(0, Math.floor((session.expiresAt.getTime() - now) / 1000))
+        : currentStatus === 'EXPIRED'
+        ? 0
+        : null;
+
+    return {
+      challengeId,
+      teamId,
+      isTimed: true,
+      status: currentStatus,
+      startedAt: session.startedAt.toISOString(),
+      expiresAt: session.expiresAt.toISOString(),
+      completedAt: session.completedAt ? session.completedAt.toISOString() : null,
+      remainingSeconds,
+    };
+  },
+
+  async startTeamChallengeSession(
+    teamId: string,
+    challengeId: string
+  ): Promise<TeamChallengeSessionDTO> {
+    const hasDb = await checkPrisma();
+    const now = new Date();
+
+    if (hasDb) {
+      const challenge = await prisma.challenge.findUnique({ where: { id: challengeId } });
+      if (!challenge) {
+        throw new Error('Challenge not found');
+      }
+
+      const durationMins = challenge.durationMinutes || 30;
+      const expiresAt = new Date(now.getTime() + durationMins * 60 * 1000);
+
+      // Atomic upsert/find to prevent race condition between teammates
+      const session = await prisma.teamChallengeSession.upsert({
+        where: { teamId_challengeId: { teamId, challengeId } },
+        update: {}, // If it already exists, do NOT alter existing start or expiration!
+        create: {
+          teamId,
+          challengeId,
+          status: 'ACTIVE',
+          startedAt: now,
+          expiresAt,
+        },
+      });
+
+      return (await this.getTeamChallengeSession(teamId, challengeId))!;
+    }
+
+    const challenge = memoryStore.challenges.find((k) => k.id === challengeId);
+    if (!challenge) {
+      throw new Error('Challenge not found');
+    }
+
+    const sessionKey = `${teamId}:${challengeId}`;
+    let session = memoryStore.sessions.get(sessionKey);
+
+    if (!session) {
+      const durationMins = challenge.durationMinutes || 30;
+      const expiresAt = new Date(now.getTime() + durationMins * 60 * 1000);
+
+      session = {
+        id: `sess-${Date.now()}`,
+        teamId,
+        challengeId,
+        status: 'ACTIVE',
+        startedAt: now,
+        expiresAt,
+        completedAt: null,
+      };
+      memoryStore.sessions.set(sessionKey, session);
+    }
+
+    return (await this.getTeamChallengeSession(teamId, challengeId))!;
   },
 
   async hasTeamSolved(teamId: string, challengeId: string): Promise<boolean> {
@@ -629,10 +830,10 @@ export const dbService = {
   }): Promise<{ isFirstBlood: boolean; pointsAwarded: number }> {
     const { challengeId, teamId, userId, points } = params;
     const hasDb = await checkPrisma();
+    const now = new Date();
 
     if (hasDb) {
       return await prisma.$transaction(async (tx) => {
-        // Check prior solve count for First Blood detection
         const priorSolves = await tx.solve.count({ where: { challengeId } });
         const isFirstBlood = priorSolves === 0;
 
@@ -650,7 +851,16 @@ export const dbService = {
           where: { id: teamId },
           data: {
             totalScore: { increment: points },
-            lastSolveAt: new Date(),
+            lastSolveAt: now,
+          },
+        });
+
+        // Mark shared challenge session as COMPLETED if active
+        await tx.teamChallengeSession.updateMany({
+          where: { teamId, challengeId },
+          data: {
+            status: 'COMPLETED',
+            completedAt: now,
           },
         });
 
@@ -660,7 +870,6 @@ export const dbService = {
 
     const priorSolves = memoryStore.solves.filter((s) => s.challengeId === challengeId);
     const isFirstBlood = priorSolves.length === 0;
-    const now = new Date();
 
     memoryStore.solves.push({
       id: `solve-${Date.now()}`,
@@ -676,6 +885,14 @@ export const dbService = {
     if (team) {
       team.totalScore += points;
       team.lastSolveAt = now;
+    }
+
+    // Mark shared session as completed
+    const sessionKey = `${teamId}:${challengeId}`;
+    const session = memoryStore.sessions.get(sessionKey);
+    if (session) {
+      session.status = 'COMPLETED';
+      session.completedAt = now;
     }
 
     return { isFirstBlood, pointsAwarded: points };

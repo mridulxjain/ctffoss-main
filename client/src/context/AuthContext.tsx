@@ -5,7 +5,6 @@ import type { UserDTO, Role } from '@fossctf/shared';
 interface TeamSession {
   id: string;
   name: string;
-  inviteCode: string;
   totalScore: number;
 }
 
@@ -59,7 +58,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   useEffect(() => {
-    // Initial fetch, auto-login with default dev user if not logged in
+    // Initial fetch, auto-login with default dev user (Alice) if not logged in
     (async () => {
       try {
         const data = await api.get('/auth/me');
@@ -68,7 +67,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           setTeam(data.team);
           setIsLoading(false);
         } else {
-          // In local dev, auto-authenticate as Alice to give an immediate live dashboard experience
           await loginDev('USER', 'alice_sec', 'alice@university.edu');
         }
       } catch {

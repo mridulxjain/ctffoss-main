@@ -3,7 +3,7 @@ import { api } from '../lib/api';
 import type { CategoryDTO, ChallengeListItemDTO } from '@fossctf/shared';
 import { useAuth } from '../context/AuthContext';
 import { ChallengeModal } from '../components/challenges/ChallengeModal';
-import { Search, CheckCircle2, Circle } from 'lucide-react';
+import { Search, CheckCircle2, Circle, Clock } from 'lucide-react';
 
 export const ChallengesPage: React.FC = () => {
   const { team, refreshSession } = useAuth();
@@ -186,6 +186,12 @@ export const ChallengesPage: React.FC = () => {
                     <span className="font-medium text-sm text-zinc-200 group-hover:text-emerald-400 transition-colors truncate">
                       {chal.title}
                     </span>
+                    {chal.isTimed && (
+                      <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-mono font-medium bg-amber-500/10 text-amber-400 border border-amber-500/20 shrink-0">
+                        <Clock className="w-2.5 h-2.5" />
+                        {chal.durationMinutes}m
+                      </span>
+                    )}
                   </div>
                   <div className="text-xs text-zinc-500 flex items-center gap-2 mt-0.5">
                     <span>{chal.categoryName}</span>
