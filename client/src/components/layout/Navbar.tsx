@@ -129,11 +129,10 @@ export const Navbar: React.FC = () => {
                 <Link
                   key={item.path}
                   to={item.path}
-                  className={`flex items-center gap-2 px-3.5 py-2 text-xs sm:text-sm font-mono font-bold tracking-wider rounded transition-all ${
-                    isActive
+                  className={`flex items-center gap-2 px-3.5 py-2 text-xs sm:text-sm font-mono font-bold tracking-wider rounded transition-all ${isActive
                       ? 'bg-zinc-900 text-emerald-400 border border-emerald-500/80 shadow-[2px_2px_0px_#10b981]'
                       : 'text-zinc-400 hover:text-zinc-100 hover:bg-zinc-900/60 border border-transparent'
-                  }`}
+                    }`}
                 >
                   <Icon className={`w-4 h-4 ${isActive ? 'text-emerald-400' : 'text-zinc-500'}`} />
                   <span>{item.label}</span>
@@ -185,9 +184,8 @@ export const Navbar: React.FC = () => {
                             <button
                               key={p.username}
                               onClick={() => handlePersonaSelect(p)}
-                              className={`w-full text-left px-3 py-1.5 flex items-center justify-between hover:bg-zinc-800 transition-colors ${
-                                isSelected ? 'text-emerald-400 font-medium bg-emerald-500/10' : 'text-zinc-300'
-                              }`}
+                              className={`w-full text-left px-3 py-1.5 flex items-center justify-between hover:bg-zinc-800 transition-colors ${isSelected ? 'text-emerald-400 font-medium bg-emerald-500/10' : 'text-zinc-300'
+                                }`}
                             >
                               <div className="truncate">
                                 <span className="block truncate text-xs">{p.label}</span>
@@ -256,11 +254,10 @@ export const Navbar: React.FC = () => {
                 key={item.path}
                 to={item.path}
                 onClick={() => setMobileMenuOpen(false)}
-                className={`flex items-center gap-2.5 px-3 py-2 rounded-md text-sm font-medium ${
-                  isActive
+                className={`flex items-center gap-2.5 px-3 py-2 rounded-md text-sm font-medium ${isActive
                     ? 'bg-zinc-800 text-zinc-100 border border-zinc-700'
                     : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-900'
-                }`}
+                  }`}
               >
                 <Icon className="w-4 h-4 text-zinc-400" />
                 <span>{item.label}</span>
