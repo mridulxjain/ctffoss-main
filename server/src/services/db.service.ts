@@ -15,6 +15,10 @@ import {
   TeamSolveDTO,
   CompetitionAttemptDTO,
   AttemptStatus,
+  CompetitionLeaderboardEntryDTO,
+  CompetitionLeaderboardResponse,
+  TimedAttemptStatus,
+  formatElapsedDuration,
 } from '@fossctf/shared';
 
 export interface DBUser {
@@ -1997,6 +2001,164 @@ export const dbService = {
     if (team) {
       team.valenfindTeamId = valenfindTeamId;
     }
+  },
+
+  /**
+   * Retrieves the dedicated timed competition leaderboard.
+   * Ranks all eligible teams:
+   * 1. Completed teams rank above incomplete teams.
+   * 2. Completed teams rank by elapsedMs ascending (faster is better).
+   * 3. For equal elapsedMs, completedAt ascending (earlier finish is better).
+   * 4. Stable teamId ascending as the final deterministic tie-breaker.
+   * 5. Incomplete teams appear after completed teams (IN_PROGRESS before NOT_STARTED,
+   *    sorted by startedAt ascending, then teamId).
+   * 6. No fake completion times or elapsedMs are generated for incomplete teams.
+   */
+  async getCompetitionLeaderboard(): Promise<CompetitionLeaderboardResponse> {
+    const hasDb = await checkPrisma();
+
+    interface RawTeamAttempt {
+      teamId: string;
+      teamName: string;
+      attempt?: {
+        status: string;
+        startedAt: Date;
+        completedAt: Date | null;
+        elapsedMs: number | null;
+      } | null;
+    }
+
+    let rawTeams: RawTeamAttempt[] = [];
+
+    if (hasDb) {
+      const teams = await prisma.team.findMany({
+        select: {
+          id: true,
+          name: true,
+          attempts: {
+            take: 1,
+            select: {
+              status: true,
+              startedAt: true,
+              completedAt: true,
+              elapsedMs: true,
+            },
+          },
+        },
+        orderBy: { name: 'asc' },
+      });
+
+      rawTeams = teams.map((t) => ({
+        teamId: t.id,
+        teamName: t.name,
+        attempt: t.attempts[0] || null,
+      }));
+    } else {
+      rawTeams = Array.from(memoryStore.teams.values()).map((t) => {
+        const attempt = memoryStore.attempts.get(t.id);
+        return {
+          teamId: t.id,
+          teamName: t.name,
+          attempt: attempt || null,
+        };
+      });
+    }
+
+    // Map each team to its entry
+    const entries: Array<Omit<CompetitionLeaderboardEntryDTO, 'rank'>> = rawTeams.map((t) => {
+      const att = t.attempt;
+      if (att && att.status === 'COMPLETED') {
+        const elapsed =
+          att.elapsedMs ??
+          (att.completedAt
+            ? Math.max(0, new Date(att.completedAt).getTime() - new Date(att.startedAt).getTime())
+            : null);
+        return {
+          teamId: t.teamId,
+          teamName: t.teamName,
+          status: 'COMPLETED' as TimedAttemptStatus,
+          elapsedMs: elapsed,
+          formattedTime: formatElapsedDuration(elapsed),
+          startedAt: new Date(att.startedAt).toISOString(),
+          completedAt: att.completedAt ? new Date(att.completedAt).toISOString() : null,
+        };
+      }
+
+      if (att && att.status === 'IN_PROGRESS') {
+        return {
+          teamId: t.teamId,
+          teamName: t.teamName,
+          status: 'IN_PROGRESS' as TimedAttemptStatus,
+          elapsedMs: null,
+          formattedTime: null,
+          startedAt: new Date(att.startedAt).toISOString(),
+          completedAt: null,
+        };
+      }
+
+      return {
+        teamId: t.teamId,
+        teamName: t.teamName,
+        status: 'NOT_STARTED' as TimedAttemptStatus,
+        elapsedMs: null,
+        formattedTime: null,
+        startedAt: null,
+        completedAt: null,
+      };
+    });
+
+    const completedTeams = entries.filter((e) => e.status === 'COMPLETED');
+    const incompleteTeams = entries.filter((e) => e.status !== 'COMPLETED');
+
+    // Sort completed teams:
+    // 1. elapsedMs ASC
+    // 2. completedAt ASC
+    // 3. teamId ASC (deterministic tie-breaker)
+    completedTeams.sort((a, b) => {
+      const elapsedA = a.elapsedMs ?? Infinity;
+      const elapsedB = b.elapsedMs ?? Infinity;
+      if (elapsedA !== elapsedB) {
+        return elapsedA - elapsedB;
+      }
+      const timeA = a.completedAt ? new Date(a.completedAt).getTime() : Infinity;
+      const timeB = b.completedAt ? new Date(b.completedAt).getTime() : Infinity;
+      if (timeA !== timeB) {
+        return timeA - timeB;
+      }
+      return a.teamId.localeCompare(b.teamId);
+    });
+
+    // Sort incomplete teams:
+    // 1. IN_PROGRESS before NOT_STARTED
+    // 2. startedAt ASC
+    // 3. teamName ASC or teamId ASC (deterministic)
+    incompleteTeams.sort((a, b) => {
+      if (a.status === 'IN_PROGRESS' && b.status === 'NOT_STARTED') return -1;
+      if (a.status === 'NOT_STARTED' && b.status === 'IN_PROGRESS') return 1;
+
+      if (a.status === 'IN_PROGRESS' && b.status === 'IN_PROGRESS') {
+        const startA = a.startedAt ? new Date(a.startedAt).getTime() : Infinity;
+        const startB = b.startedAt ? new Date(b.startedAt).getTime() : Infinity;
+        if (startA !== startB) return startA - startB;
+      }
+
+      return a.teamName.localeCompare(b.teamName) || a.teamId.localeCompare(b.teamId);
+    });
+
+    const sorted = [...completedTeams, ...incompleteTeams];
+    const rankedLeaderboard: CompetitionLeaderboardEntryDTO[] = sorted.map((entry, index) => ({
+      ...entry,
+      rank: index + 1,
+    }));
+
+    return {
+      leaderboard: rankedLeaderboard,
+      totalTeams: rankedLeaderboard.length,
+      completedCount: completedTeams.length,
+      inProgressCount: incompleteTeams.filter((e) => e.status === 'IN_PROGRESS').length,
+      notStartedCount: incompleteTeams.filter((e) => e.status === 'NOT_STARTED').length,
+      updatedAt: new Date().toISOString(),
+    };
   },
 };
 

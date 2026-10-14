@@ -4,8 +4,9 @@ import { requireAuth, requireTeam } from '../middleware/auth';
 
 const router = Router();
 
-// Public competition status and timing window
+// Public competition status, schedule, and timed leaderboard
 router.get('/', competitionController.getStatus);
+router.get('/leaderboard', competitionController.getLeaderboard);
 
 // Authenticated team competition attempt endpoints
 router.post('/attempt', requireAuth, requireTeam, competitionController.startAttempt);

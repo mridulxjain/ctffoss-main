@@ -286,5 +286,28 @@ export const competitionController = {
       });
     }
   },
+
+  /**
+   * Public endpoint to retrieve the dedicated timed competition leaderboard.
+   * Ranks all competition teams by verified elapsed time (elapsedMs ascending)
+   * with deterministic tie-breaking.
+   */
+  async getLeaderboard(_req: Request, res: Response): Promise<void> {
+    try {
+      const data = await dbService.getCompetitionLeaderboard();
+      res.json({
+        success: true,
+        data,
+      });
+    } catch (err: any) {
+      res.status(500).json({
+        success: false,
+        error: {
+          message: err.message || 'Failed to retrieve competition leaderboard.',
+          code: 'INTERNAL_ERROR',
+        },
+      });
+    }
+  },
 };
 

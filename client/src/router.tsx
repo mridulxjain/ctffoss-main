@@ -3,6 +3,7 @@ import { createBrowserRouter, Navigate } from 'react-router-dom';
 import { AppLayout } from './components/layout/AppLayout';
 import { ChallengesPage } from './pages/ChallengesPage';
 import { ScoreboardPage } from './pages/ScoreboardPage';
+import { CompetitionLeaderboardPage } from './pages/CompetitionLeaderboardPage';
 import { TeamPage } from './pages/TeamPage';
 import { RulesPage } from './pages/RulesPage';
 import { AdminChallengesPage } from './pages/AdminChallengesPage';
@@ -23,6 +24,14 @@ export const router = createBrowserRouter([
       {
         path: 'scoreboard',
         element: <ScoreboardPage />,
+      },
+      {
+        path: 'competition/leaderboard',
+        element: <CompetitionLeaderboardPage />,
+      },
+      {
+        path: 'leaderboard',
+        element: <Navigate to="/competition/leaderboard" replace />,
       },
       {
         path: 'team',

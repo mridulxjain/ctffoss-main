@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
+import { Link } from 'react-router-dom';
 import { api } from '../lib/api';
 import type { ScoreboardEntryDTO } from '@fossctf/shared';
 import { useAuth } from '../context/AuthContext';
-import { Search, RefreshCw } from 'lucide-react';
+import { Search, RefreshCw, Trophy, Timer } from 'lucide-react';
 
 export const ScoreboardPage: React.FC = () => {
   const { team: currentTeam } = useAuth();
@@ -35,6 +36,21 @@ export const ScoreboardPage: React.FC = () => {
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-baseline justify-between gap-4 border-b border-zinc-800 pb-5">
         <div>
+          {/* Navigation Tabs */}
+          <div className="flex items-center gap-2 mb-3">
+            <div className="flex items-center gap-1.5 px-3 py-1 rounded-md text-xs font-medium bg-zinc-800 text-zinc-100 border border-zinc-700/60 shadow-sm">
+              <Trophy className="w-3.5 h-3.5 text-amber-400" />
+              <span>Points Scoreboard</span>
+            </div>
+            <Link
+              to="/competition/leaderboard"
+              className="flex items-center gap-1.5 px-3 py-1 rounded-md text-xs font-medium text-zinc-400 hover:text-zinc-200 hover:bg-zinc-900 transition-colors"
+            >
+              <Timer className="w-3.5 h-3.5 text-emerald-400" />
+              <span>Timed Challenge Leaderboard</span>
+            </Link>
+          </div>
+
           <h1 className="text-xl font-semibold tracking-tight text-zinc-100">
             Scoreboard
           </h1>

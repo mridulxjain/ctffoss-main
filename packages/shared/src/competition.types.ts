@@ -42,3 +42,41 @@ export interface SubmitAttemptFlagResponse {
   message: string;
 }
 
+export type TimedAttemptStatus = 'COMPLETED' | 'IN_PROGRESS' | 'NOT_STARTED';
+
+export interface CompetitionLeaderboardEntryDTO {
+  rank: number;
+  teamId: string;
+  teamName: string;
+  status: TimedAttemptStatus;
+  elapsedMs: number | null;
+  formattedTime: string | null;
+  startedAt: string | null;
+  completedAt: string | null;
+}
+
+export interface CompetitionLeaderboardResponse {
+  leaderboard: CompetitionLeaderboardEntryDTO[];
+  totalTeams: number;
+  completedCount: number;
+  inProgressCount: number;
+  notStartedCount: number;
+  updatedAt: string;
+}
+
+/**
+ * Formats an elapsed duration in milliseconds into mm:ss.SSS with consistent precision.
+ * e.g., 134532 -> "02:14.532"
+ */
+export function formatElapsedDuration(ms: number | null | undefined): string | null {
+  if (ms === null || ms === undefined || ms < 0 || isNaN(ms)) return null;
+  const totalSeconds = Math.floor(ms / 1000);
+  const milliseconds = ms % 1000;
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  const mm = String(minutes).padStart(2, '0');
+  const ss = String(seconds).padStart(2, '0');
+  const sss = String(milliseconds).padStart(3, '0');
+  return `${mm}:${ss}.${sss}`;
+}
+
