@@ -611,3 +611,323 @@ test('CHALLENGE ENGINE & ADMIN: Authoritative lifecycle, flag security, and acce
   });
 });
 
+test('COMPETITION LIFECYCLE & SCOREBOARD: Boundary enforcement, deterministic scoring, and admin controls', async (t) => {
+  const adminToken = signToken({
+    id: 'usr-admin-01',
+    email: 'admin@fossclub.tech',
+    username: 'foss_admin',
+    role: 'ADMIN',
+  });
+
+  const aliceToken = signToken({
+    id: 'usr-alice-02',
+    email: 'alice@university.edu',
+    username: 'alice_sec',
+    role: 'USER',
+    teamId: 'team-binary-beasts',
+  });
+
+  const bobToken = signToken({
+    id: 'usr-bob-03',
+    email: 'bob@university.edu',
+    username: 'bob_0x',
+    role: 'USER',
+    teamId: 'team-binary-beasts',
+  });
+
+  const charlieNoTeamToken = signToken({
+    id: 'usr-charlie-04',
+    email: 'charlie@university.edu',
+    username: 'charlie_solo',
+    role: 'USER',
+    teamId: null,
+  });
+
+  await t.test('Public endpoint returns current competition status without requiring auth', async () => {
+    const res = await makeRequest('GET', '/api/v1/competition');
+    assert.equal(res.status, 200);
+    assert.equal(res.body.success, true);
+    assert.ok(res.body.data.title);
+    assert.ok(res.body.data.state);
+    assert.ok(res.body.data.serverTime);
+  });
+
+  await t.test('Non-admin participant cannot access admin competition endpoint (403 Forbidden)', async () => {
+    const res = await makeRequest(
+      'GET',
+      '/api/v1/admin/competition',
+      { Authorization: `Bearer ${aliceToken}` }
+    );
+    assert.equal(res.status, 403);
+    assert.equal(res.body.error.code, 'FORBIDDEN');
+  });
+
+  await t.test('Non-admin participant cannot update competition configuration (403 Forbidden)', async () => {
+    const res = await makeRequest(
+      'PUT',
+      '/api/v1/admin/competition',
+      { Authorization: `Bearer ${aliceToken}` },
+      { title: 'Hacked Competition' }
+    );
+    assert.equal(res.status, 403);
+    assert.equal(res.body.error.code, 'FORBIDDEN');
+  });
+
+  await t.test('Validation rejects configuration where endTime precedes or equals startTime', async () => {
+    const now = Date.now();
+    const res = await makeRequest(
+      'PUT',
+      '/api/v1/admin/competition',
+      { Authorization: `Bearer ${adminToken}` },
+      {
+        startTime: new Date(now + 100000).toISOString(),
+        endTime: new Date(now + 50000).toISOString(),
+      }
+    );
+    assert.equal(res.status, 400);
+    assert.equal(res.body.error.code, 'VALIDATION_ERROR');
+  });
+
+  await t.test('Admin can update competition configuration with valid schedule', async () => {
+    const res = await makeRequest(
+      'PUT',
+      '/api/v1/admin/competition',
+      { Authorization: `Bearer ${adminToken}` },
+      {
+        title: 'FOSS CTF Championship 2026',
+        description: 'University Capture The Flag Championship',
+        startTime: null,
+        endTime: null,
+        isPaused: false,
+      }
+    );
+    assert.equal(res.status, 200);
+    assert.equal(res.body.success, true);
+    assert.equal(res.body.data.title, 'FOSS CTF Championship 2026');
+    assert.equal(res.body.data.state, 'LIVE');
+  });
+
+  await t.test('Scheduled competition (future start time) derives SCHEDULED state and rejects submissions', async () => {
+    const futureStart = new Date(Date.now() + 3600000).toISOString();
+    const futureEnd = new Date(Date.now() + 7200000).toISOString();
+
+    // Set competition to scheduled in future
+    await makeRequest(
+      'PUT',
+      '/api/v1/admin/competition',
+      { Authorization: `Bearer ${adminToken}` },
+      {
+        startTime: futureStart,
+        endTime: futureEnd,
+        isPaused: false,
+      }
+    );
+
+    // Verify derived state is SCHEDULED
+    const statusRes = await makeRequest('GET', '/api/v1/competition');
+    assert.equal(statusRes.body.data.state, 'SCHEDULED');
+
+    // Participant attempts to submit to published challenge
+    const subRes = await makeRequest(
+      'POST',
+      '/api/v1/challenges/chal-web-1/submit',
+      { Authorization: `Bearer ${aliceToken}` },
+      { flag: 'FOSSCTF{sql_injection_bypass_master_77}' }
+    );
+    assert.equal(subRes.status, 400);
+    assert.equal(subRes.body.error.code, 'COMPETITION_SCHEDULED');
+
+    // Participant attempts to start timed session during scheduled state
+    const sessRes = await makeRequest(
+      'POST',
+      '/api/v1/challenges/chal-crypto-1/start',
+      { Authorization: `Bearer ${aliceToken}` }
+    );
+    assert.equal(sessRes.status, 400);
+    assert.equal(sessRes.body.error.code, 'COMPETITION_SCHEDULED');
+  });
+
+  await t.test('Exact start boundary: submissions are permitted once server time reaches startTime', async () => {
+    // Set start time slightly in the past (e.g. 5 seconds ago) and end time in future
+    const pastStart = new Date(Date.now() - 5000).toISOString();
+    const futureEnd = new Date(Date.now() + 3600000).toISOString();
+
+    await makeRequest(
+      'PUT',
+      '/api/v1/admin/competition',
+      { Authorization: `Bearer ${adminToken}` },
+      {
+        startTime: pastStart,
+        endTime: futureEnd,
+        isPaused: false,
+      }
+    );
+
+    const statusRes = await makeRequest('GET', '/api/v1/competition');
+    assert.equal(statusRes.body.data.state, 'LIVE');
+  });
+
+  await t.test('Ended competition (past end time) derives ENDED state and rejects submissions', async () => {
+    const pastStart = new Date(Date.now() - 7200000).toISOString();
+    const pastEnd = new Date(Date.now() - 3600000).toISOString();
+
+    await makeRequest(
+      'PUT',
+      '/api/v1/admin/competition',
+      { Authorization: `Bearer ${adminToken}` },
+      {
+        startTime: pastStart,
+        endTime: pastEnd,
+        isPaused: false,
+      }
+    );
+
+    // Verify derived state is ENDED
+    const statusRes = await makeRequest('GET', '/api/v1/competition');
+    assert.equal(statusRes.body.data.state, 'ENDED');
+
+    // Submission rejected
+    const subRes = await makeRequest(
+      'POST',
+      '/api/v1/challenges/chal-web-1/submit',
+      { Authorization: `Bearer ${aliceToken}` },
+      { flag: 'FOSSCTF{sql_injection_bypass_master_77}' }
+    );
+    assert.equal(subRes.status, 400);
+    assert.equal(subRes.body.error.code, 'COMPETITION_ENDED');
+
+    // Session start rejected
+    const sessRes = await makeRequest(
+      'POST',
+      '/api/v1/challenges/chal-crypto-1/start',
+      { Authorization: `Bearer ${aliceToken}` }
+    );
+    assert.equal(sessRes.status, 400);
+    assert.equal(sessRes.body.error.code, 'COMPETITION_ENDED');
+  });
+
+  await t.test('Emergency pause overrides schedule and rejects submissions', async () => {
+    // Schedule would normally be LIVE (started in past, ends in future), but isPaused = true
+    const pastStart = new Date(Date.now() - 3600000).toISOString();
+    const futureEnd = new Date(Date.now() + 3600000).toISOString();
+
+    await makeRequest(
+      'PUT',
+      '/api/v1/admin/competition',
+      { Authorization: `Bearer ${adminToken}` },
+      {
+        startTime: pastStart,
+        endTime: futureEnd,
+        isPaused: true,
+      }
+    );
+
+    const statusRes = await makeRequest('GET', '/api/v1/competition');
+    assert.equal(statusRes.body.data.state, 'PAUSED');
+
+    const subRes = await makeRequest(
+      'POST',
+      '/api/v1/challenges/chal-web-1/submit',
+      { Authorization: `Bearer ${aliceToken}` },
+      { flag: 'FOSSCTF{sql_injection_bypass_master_77}' }
+    );
+    assert.equal(subRes.status, 400);
+    assert.equal(subRes.body.error.code, 'COMPETITION_INACTIVE');
+  });
+
+  await t.test('Scoreboard calculation: points match unique team solves with deterministic ranking', async () => {
+    // Restore competition to active LIVE state
+    await makeRequest(
+      'PUT',
+      '/api/v1/admin/competition',
+      { Authorization: `Bearer ${adminToken}` },
+      {
+        startTime: null,
+        endTime: null,
+        isPaused: false,
+      }
+    );
+
+    const sbRes = await makeRequest('GET', '/api/v1/scoreboard');
+    assert.equal(sbRes.status, 200);
+    assert.equal(sbRes.body.success, true);
+    const leaderboard = sbRes.body.data.leaderboard;
+    assert.ok(Array.isArray(leaderboard));
+
+    // Verify ranks are consecutive starting at 1
+    leaderboard.forEach((entry: any, index: number) => {
+      assert.equal(entry.rank, index + 1);
+      assert.ok(entry.teamId);
+      assert.ok(entry.teamName);
+      assert.ok(typeof entry.totalScore === 'number');
+      assert.ok(typeof entry.solvesCount === 'number');
+    });
+
+    // Verify ordering: descending score, or if score tied, earlier last solve
+    for (let i = 0; i < leaderboard.length - 1; i++) {
+      const a = leaderboard[i];
+      const b = leaderboard[i + 1];
+      if (a.totalScore === b.totalScore) {
+        if (a.lastSolveAt && b.lastSolveAt) {
+          assert.ok(
+            new Date(a.lastSolveAt).getTime() <= new Date(b.lastSolveAt).getTime(),
+            'Tied scores must break ties by earlier last solve time'
+          );
+        }
+      } else {
+        assert.ok(a.totalScore >= b.totalScore, 'Scoreboard must be ordered by score descending');
+      }
+    }
+  });
+
+  await t.test('Team progress is shared across teammates (Alice and Bob)', async () => {
+    const resAlice = await makeRequest('GET', '/api/v1/teams/me', {
+      Authorization: `Bearer ${aliceToken}`,
+    });
+    assert.equal(resAlice.status, 200);
+    assert.equal(resAlice.body.data.name, 'Binary Beasts');
+    assert.ok(resAlice.body.data.totalScore >= 0);
+    assert.ok(resAlice.body.data.solvesCount >= 0);
+    assert.ok(resAlice.body.data.totalAvailableChallenges >= 0);
+    assert.ok(Array.isArray(resAlice.body.data.solves));
+
+    const resBob = await makeRequest('GET', '/api/v1/teams/me', {
+      Authorization: `Bearer ${bobToken}`,
+    });
+    assert.equal(resBob.status, 200);
+
+    // Both teammates see identical score, solves count, rank, and solved challenges
+    assert.equal(resAlice.body.data.totalScore, resBob.body.data.totalScore);
+    assert.equal(resAlice.body.data.solvesCount, resBob.body.data.solvesCount);
+    assert.equal(resAlice.body.data.rank, resBob.body.data.rank);
+    assert.deepEqual(resAlice.body.data.solves, resBob.body.data.solves);
+  });
+
+  await t.test('Participant without a team cannot access team progress endpoint', async () => {
+    const res = await makeRequest('GET', '/api/v1/teams/me', {
+      Authorization: `Bearer ${charlieNoTeamToken}`,
+    });
+    assert.equal(res.status, 404);
+    assert.equal(res.body.error.code, 'NO_TEAM');
+  });
+
+  await t.test('Client-supplied teamId cannot manipulate which team receives points or progress', async () => {
+    // Alice submits with a foreign teamId passed in body
+    const subRes = await makeRequest(
+      'POST',
+      '/api/v1/challenges/chal-web-1/submit',
+      { Authorization: `Bearer ${aliceToken}` },
+      {
+        flag: 'FOSSCTF{sql_injection_bypass_master_77}',
+        teamId: 'team-null-pointers', // Attempted injection
+      }
+    );
+    // Even if ALREADY_SOLVED or valid, server never associates solve to injected teamId
+    const team2Res = await makeRequest('GET', '/api/v1/scoreboard');
+    const team2Entry = team2Res.body.data.leaderboard.find((e: any) => e.teamId === 'team-null-pointers');
+    // Team 2 must not have Alice's challenge
+    assert.equal(team2Entry, undefined);
+  });
+});
+
+

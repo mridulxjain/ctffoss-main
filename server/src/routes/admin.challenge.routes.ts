@@ -21,6 +21,7 @@ router.put('/:id', validateBody(updateChallengeSchema), adminChallengeController
 router.post('/:id/publish', adminChallengeController.publish);
 router.post('/:id/unpublish', adminChallengeController.unpublish);
 router.post('/:id/archive', adminChallengeController.archive);
+router.post('/:id/flag', validateBody(updateFlagSchema), adminChallengeController.updateFlag);
 router.post('/:id/flags', validateBody(updateFlagSchema), adminChallengeController.updateFlag);
 router.delete('/:id', adminChallengeController.delete);
 

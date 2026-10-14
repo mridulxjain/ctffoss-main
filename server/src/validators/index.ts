@@ -87,3 +87,35 @@ export const updateFlagSchema = z.object({
   flag: z.string().min(1, 'Flag cannot be empty').max(256, 'Flag is too long').trim(),
   isCaseSensitive: z.boolean().optional().default(true),
 });
+
+export const updateCompetitionConfigSchema = z
+  .object({
+    title: z.string().min(2, 'Title must be at least 2 characters').max(100).trim().optional(),
+    description: z.string().max(500).optional(),
+    startTime: z
+      .union([
+        z.string().refine((v) => !isNaN(Date.parse(v)), { message: 'Invalid ISO date string' }),
+        z.null(),
+      ])
+      .optional(),
+    endTime: z
+      .union([
+        z.string().refine((v) => !isNaN(Date.parse(v)), { message: 'Invalid ISO date string' }),
+        z.null(),
+      ])
+      .optional(),
+    isPaused: z.boolean().optional(),
+  })
+  .refine(
+    (data) => {
+      if (data.startTime && data.endTime) {
+        return new Date(data.endTime).getTime() > new Date(data.startTime).getTime();
+      }
+      return true;
+    },
+    {
+      message: 'End time must be after start time',
+      path: ['endTime'],
+    }
+  );
+

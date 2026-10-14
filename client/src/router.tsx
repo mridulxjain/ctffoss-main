@@ -5,6 +5,7 @@ import { ChallengesPage } from './pages/ChallengesPage';
 import { ScoreboardPage } from './pages/ScoreboardPage';
 import { TeamPage } from './pages/TeamPage';
 import { RulesPage } from './pages/RulesPage';
+import { AdminChallengesPage } from './pages/AdminChallengesPage';
 
 export const router = createBrowserRouter([
   {
@@ -30,6 +31,14 @@ export const router = createBrowserRouter([
       {
         path: 'rules',
         element: <RulesPage />,
+      },
+      {
+        path: 'admin',
+        element: <Navigate to="/admin/challenges" replace />,
+      },
+      {
+        path: 'admin/challenges',
+        element: <AdminChallengesPage />,
       },
       {
         path: '*',

@@ -1,26 +1,31 @@
 import React, { useState, useEffect } from 'react';
 import { api } from '../lib/api';
-import type { CategoryDTO, ChallengeListItemDTO } from '@fossctf/shared';
+import type { CategoryDTO, ChallengeListItemDTO, CompetitionConfigDTO } from '@fossctf/shared';
 import { useAuth } from '../context/AuthContext';
 import { ChallengeModal } from '../components/challenges/ChallengeModal';
-import { Search, CheckCircle2, Circle, Clock } from 'lucide-react';
+import { Search, CheckCircle2, Circle, Clock, AlertTriangle, Radio } from 'lucide-react';
 
 export const ChallengesPage: React.FC = () => {
   const { team, refreshSession } = useAuth();
   const [categories, setCategories] = useState<CategoryDTO[]>([]);
   const [challenges, setChallenges] = useState<ChallengeListItemDTO[]>([]);
+  const [competition, setCompetition] = useState<CompetitionConfigDTO | null>(null);
   const [selectedCategory, setSelectedCategory] = useState<string>('ALL');
   const [selectedDifficulty, setSelectedDifficulty] = useState<string>('ALL');
   const [searchQuery, setSearchQuery] = useState('');
   const [activeModalId, setActiveModalId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
-  const fetchChallenges = async () => {
+  const fetchData = async () => {
     try {
       setLoading(true);
-      const data = await api.get('/challenges');
-      setCategories(data.categories || []);
-      setChallenges(data.challenges || []);
+      const [chalData, compData] = await Promise.all([
+        api.get('/challenges').catch(() => ({ categories: [], challenges: [] })),
+        api.get('/competition').catch(() => null),
+      ]);
+      setCategories(chalData.categories || []);
+      setChallenges(chalData.challenges || []);
+      setCompetition(compData);
     } catch (err) {
       console.error(err);
     } finally {
@@ -29,11 +34,11 @@ export const ChallengesPage: React.FC = () => {
   };
 
   useEffect(() => {
-    fetchChallenges();
+    fetchData();
   }, []);
 
   const handleSolved = () => {
-    fetchChallenges();
+    fetchData();
     refreshSession();
   };
 
@@ -84,6 +89,72 @@ export const ChallengesPage: React.FC = () => {
           </div>
         )}
       </div>
+
+      {/* Competition Status Banner */}
+      {competition && competition.state !== 'LIVE' && (
+        <div
+          className={`p-4 rounded-lg border text-xs flex items-start gap-3 ${
+            competition.state === 'SCHEDULED'
+              ? 'bg-amber-950/30 border-amber-800/50 text-amber-300'
+              : competition.state === 'ENDED'
+              ? 'bg-zinc-900 border-zinc-700/80 text-zinc-300'
+              : 'bg-rose-950/30 border-rose-800/50 text-rose-300'
+          }`}
+        >
+          {competition.state === 'SCHEDULED' ? (
+            <Clock className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
+          ) : competition.state === 'ENDED' ? (
+            <CheckCircle2 className="w-4 h-4 text-zinc-400 shrink-0 mt-0.5" />
+          ) : (
+            <AlertTriangle className="w-4 h-4 text-rose-400 shrink-0 mt-0.5" />
+          )}
+          <div className="space-y-1">
+            <div className="font-semibold text-zinc-100 flex items-center gap-2">
+              <span>{competition.title}</span>
+              <span
+                className={`text-[10px] font-mono px-2 py-0.5 rounded border uppercase ${
+                  competition.state === 'SCHEDULED'
+                    ? 'bg-amber-900/40 text-amber-300 border-amber-700/50'
+                    : competition.state === 'ENDED'
+                    ? 'bg-zinc-800 text-zinc-400 border-zinc-700'
+                    : 'bg-rose-900/40 text-rose-300 border-rose-700/50'
+                }`}
+              >
+                {competition.state}
+              </span>
+            </div>
+            <p className="text-zinc-400 leading-relaxed">
+              {competition.state === 'SCHEDULED' && competition.startTime
+                ? `The competition is scheduled to begin at ${new Date(
+                    competition.startTime
+                  ).toLocaleString()}. Challenge browsing is active in preview mode, but flag submissions are locked until start time.`
+                : competition.state === 'SCHEDULED'
+                ? 'The competition has not yet started. Flag submissions are locked until the scheduled start time.'
+                : competition.state === 'ENDED' && competition.endTime
+                ? `The competition concluded at ${new Date(
+                    competition.endTime
+                  ).toLocaleString()}. Submissions are closed. Challenges remain available for archival study.`
+                : competition.state === 'ENDED'
+                ? 'The competition has concluded. Flag submissions are closed.'
+                : 'The competition is currently paused or inactive. Submissions are temporarily disabled by organizers.'}
+            </p>
+          </div>
+        </div>
+      )}
+
+      {competition && competition.state === 'LIVE' && competition.endTime && (
+        <div className="p-3 rounded-lg border bg-emerald-950/20 border-emerald-900/40 text-xs flex items-center justify-between">
+          <div className="flex items-center gap-2 text-emerald-400">
+            <Radio className="w-3.5 h-3.5 animate-pulse" />
+            <span className="font-medium">Competition Live</span>
+            <span className="text-zinc-500">·</span>
+            <span className="text-zinc-400">{competition.title}</span>
+          </div>
+          <div className="font-mono text-zinc-400 text-[11px]">
+            Closes at {new Date(competition.endTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+          </div>
+        </div>
+      )}
 
       {/* Filter & Search Bar */}
       <div className="space-y-3">

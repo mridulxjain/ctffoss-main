@@ -66,6 +66,38 @@ export const challengeController = {
     const { id } = req.params;
     const teamId = req.user!.teamId!;
 
+    const compConfig = await dbService.getCompetitionConfig();
+    if (compConfig.status === 'SCHEDULED') {
+      res.status(400).json({
+        success: false,
+        error: {
+          message: 'The competition has not started yet.',
+          code: 'COMPETITION_SCHEDULED',
+        },
+      });
+      return;
+    }
+    if (compConfig.status === 'ENDED') {
+      res.status(400).json({
+        success: false,
+        error: {
+          message: 'The competition has ended.',
+          code: 'COMPETITION_ENDED',
+        },
+      });
+      return;
+    }
+    if (compConfig.status === 'PAUSED' || compConfig.status === 'DRAFT') {
+      res.status(400).json({
+        success: false,
+        error: {
+          message: 'The competition is currently inactive.',
+          code: 'COMPETITION_INACTIVE',
+        },
+      });
+      return;
+    }
+
     try {
       const session = await dbService.startTeamChallengeSession(teamId, id);
       res.json({
@@ -85,6 +117,39 @@ export const challengeController = {
     const { flag } = req.body;
     const userId = req.user!.id;
     const teamId = req.user!.teamId!;
+
+    // 0. Enforce competition lifecycle state
+    const compConfig = await dbService.getCompetitionConfig();
+    if (compConfig.status === 'PAUSED' || compConfig.status === 'DRAFT') {
+      res.status(400).json({
+        success: false,
+        error: {
+          message: 'The competition is currently not accepting submissions.',
+          code: 'COMPETITION_INACTIVE',
+        },
+      });
+      return;
+    }
+    if (compConfig.status === 'SCHEDULED') {
+      res.status(400).json({
+        success: false,
+        error: {
+          message: 'The competition has not started yet. Submissions are not currently accepted.',
+          code: 'COMPETITION_SCHEDULED',
+        },
+      });
+      return;
+    }
+    if (compConfig.status === 'ENDED') {
+      res.status(400).json({
+        success: false,
+        error: {
+          message: 'The competition has ended. Submissions are no longer accepted.',
+          code: 'COMPETITION_ENDED',
+        },
+      });
+      return;
+    }
 
     const challenge = await dbService.getChallengeDetail(id, teamId);
     if (!challenge) {

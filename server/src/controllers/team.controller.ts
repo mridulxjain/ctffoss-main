@@ -38,6 +38,10 @@ export const teamController = {
         name: team.name,
         externalId: team.externalId,
         totalScore: team.totalScore,
+        solvesCount: team.solvesCount ?? 0,
+        totalAvailableChallenges: team.totalAvailableChallenges ?? 0,
+        rank: team.rank,
+        solves: team.solves ?? [],
         members: team.members.map((m) => ({
           id: m.id,
           username: m.username,
@@ -68,7 +72,12 @@ export const teamController = {
       data: {
         id: team.id,
         name: team.name,
+        externalId: team.externalId,
         totalScore: team.totalScore,
+        solvesCount: team.solvesCount ?? 0,
+        totalAvailableChallenges: team.totalAvailableChallenges ?? 0,
+        rank: team.rank,
+        solves: team.solves ?? [],
         members: team.members.map((m) => ({
           id: m.id,
           username: m.username,

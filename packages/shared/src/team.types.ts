@@ -5,6 +5,15 @@ export interface TeamMemberDTO {
   role: string;
 }
 
+export interface TeamSolveDTO {
+  challengeId: string;
+  challengeTitle: string;
+  categoryName?: string;
+  pointsAwarded: number;
+  solvedAt: string;
+  isFirstBlood?: boolean;
+}
+
 export interface TeamDTO {
   id: string;
   name: string;
@@ -12,6 +21,8 @@ export interface TeamDTO {
   totalScore: number;
   members: TeamMemberDTO[];
   solvesCount: number;
+  totalAvailableChallenges?: number;
+  solves?: TeamSolveDTO[];
   rank?: number;
   createdAt: string;
 }

@@ -93,7 +93,7 @@ export const TeamPage: React.FC = () => {
         /* Case 2: Participant HAS an assigned team */
         <div className="space-y-6">
           {/* Team Summary Card */}
-          <div className="rounded-lg border border-zinc-800 bg-zinc-900/30 p-5 space-y-4">
+          <div className="rounded-lg border border-zinc-800 bg-zinc-900/30 p-5 space-y-5">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
               <div>
                 <span className="text-[11px] text-zinc-500 font-mono uppercase tracking-wider">
@@ -107,22 +107,120 @@ export const TeamPage: React.FC = () => {
 
               <div className="flex items-center gap-6">
                 <div>
-                  <span className="text-[11px] text-zinc-500 font-mono block">Team Score</span>
+                  <span className="text-[11px] text-zinc-500 font-mono block">Scoreboard Rank</span>
                   <span className="text-lg font-mono font-semibold text-zinc-100">
+                    {teamDetails?.rank ? `#${teamDetails.rank}` : '—'}
+                  </span>
+                </div>
+                <div>
+                  <span className="text-[11px] text-zinc-500 font-mono block">Total Score</span>
+                  <span className="text-lg font-mono font-semibold text-emerald-400">
                     {teamDetails?.totalScore ?? team?.totalScore ?? 0} pts
                   </span>
                 </div>
               </div>
             </div>
 
-            <div className="pt-3 border-t border-zinc-800/80 text-[11px] text-zinc-500 flex items-center gap-1.5">
+            {/* Progress Bar & Stats */}
+            <div className="space-y-2 pt-2 border-t border-zinc-800/80">
+              <div className="flex items-center justify-between text-xs">
+                <span className="text-zinc-400">Competition Progress</span>
+                <span className="font-mono text-zinc-300">
+                  <span className="text-zinc-100 font-semibold">{teamDetails?.solvesCount ?? 0}</span>
+                  {' / '}
+                  <span>{teamDetails?.totalAvailableChallenges ?? 0} challenges solved</span>
+                  {teamDetails?.totalAvailableChallenges && teamDetails.totalAvailableChallenges > 0 ? (
+                    <span className="text-zinc-500 ml-1.5">
+                      ({Math.round(((teamDetails.solvesCount ?? 0) / teamDetails.totalAvailableChallenges) * 100)}%)
+                    </span>
+                  ) : null}
+                </span>
+              </div>
+              <div className="w-full h-2 rounded-full bg-zinc-800 overflow-hidden">
+                <div
+                  className="h-full bg-emerald-500 rounded-full transition-all duration-500"
+                  style={{
+                    width: `${
+                      teamDetails?.totalAvailableChallenges && teamDetails.totalAvailableChallenges > 0
+                        ? Math.min(100, Math.round(((teamDetails.solvesCount ?? 0) / teamDetails.totalAvailableChallenges) * 100))
+                        : 0
+                    }%`,
+                  }}
+                />
+              </div>
+            </div>
+
+            <div className="pt-2 border-t border-zinc-800/60 text-[11px] text-zinc-500 flex items-center gap-1.5">
               <Info className="w-3.5 h-3.5 text-zinc-500 shrink-0" />
-              <span>Team identity and membership are authoritative and synchronized from the FOSS Club identity system.</span>
+              <span>Team identity and membership are authoritative and synchronized from the central FOSS Club identity system.</span>
             </div>
           </div>
 
+          {/* Solved Challenges Section */}
+          <div className="space-y-3">
+            <div className="flex items-center justify-between">
+              <h3 className="text-xs font-semibold text-zinc-400 uppercase tracking-wider">
+                Solved Challenges ({teamDetails?.solves?.length || 0})
+              </h3>
+            </div>
+
+            {loading ? (
+              <div className="py-6 text-center text-xs font-mono text-zinc-500">
+                Loading team progress...
+              </div>
+            ) : !teamDetails?.solves || teamDetails.solves.length === 0 ? (
+              <div className="rounded-lg border border-zinc-800 bg-zinc-900/20 p-6 text-center text-xs text-zinc-500">
+                No challenges solved yet. Complete challenges from the challenge board to earn points for your team.
+              </div>
+            ) : (
+              <div className="rounded-lg border border-zinc-800 bg-zinc-900/30 overflow-hidden">
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left text-xs">
+                    <thead className="bg-zinc-950 border-b border-zinc-800 text-zinc-400 font-medium">
+                      <tr>
+                        <th className="px-4 py-2.5">Challenge</th>
+                        <th className="px-4 py-2.5">Category</th>
+                        <th className="px-4 py-2.5 text-right">Points</th>
+                        <th className="px-4 py-2.5 text-right">Solved At</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-zinc-800/60">
+                      {teamDetails.solves.map((solve) => (
+                        <tr key={solve.challengeId} className="hover:bg-zinc-900/60 transition-colors">
+                          <td className="px-4 py-3 font-medium text-zinc-200">
+                            <div className="flex items-center gap-2">
+                              <span>{solve.challengeTitle}</span>
+                              {solve.isFirstBlood && (
+                                <span className="text-[10px] font-mono px-1.5 py-0.2 rounded bg-rose-950/60 text-rose-400 border border-rose-900/60 font-semibold">
+                                  First Blood 🩸
+                                </span>
+                              )}
+                            </div>
+                          </td>
+                          <td className="px-4 py-3 text-zinc-400">
+                            {solve.categoryName}
+                          </td>
+                          <td className="px-4 py-3 text-right font-mono font-medium text-emerald-400">
+                            +{solve.pointsAwarded}
+                          </td>
+                          <td className="px-4 py-3 text-right font-mono text-zinc-500 text-[11px]">
+                            {new Date(solve.solvedAt).toLocaleTimeString([], {
+                              hour: '2-digit',
+                              minute: '2-digit',
+                              second: '2-digit',
+                            })}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+          </div>
+
           {/* Members Roster */}
-          <div className="space-y-2">
+          <div className="space-y-3">
             <div className="flex items-center justify-between">
               <h3 className="text-xs font-semibold text-zinc-400 uppercase tracking-wider">
                 Team Roster ({teamDetails?.members?.length || 1} Members)

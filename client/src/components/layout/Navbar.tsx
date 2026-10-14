@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { Flag, Trophy, Users, LogOut, Menu, X, ChevronDown, Check } from 'lucide-react';
+import { Flag, Trophy, Users, LogOut, Menu, X, ChevronDown, Check, Shield } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import type { Role } from '@fossctf/shared';
 
@@ -14,6 +14,7 @@ export const Navbar: React.FC = () => {
     { label: 'Challenges', path: '/challenges', icon: Flag },
     { label: 'Scoreboard', path: '/scoreboard', icon: Trophy },
     { label: 'Teams', path: '/team', icon: Users },
+    ...(user?.role === 'ADMIN' ? [{ label: 'Admin', path: '/admin/challenges', icon: Shield }] : []),
   ];
 
   const devPersonas: Array<{ role: Role; username: string; email: string; label: string }> = [

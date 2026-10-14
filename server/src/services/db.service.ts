@@ -1,5 +1,6 @@
 import { prisma } from '../lib/prisma';
 import { hashFlag } from '../utils/crypto';
+import { config } from '../config/index';
 import {
   Role,
   Difficulty,
@@ -8,6 +9,10 @@ import {
   AdminChallengeDTO,
   CreateChallengeRequest,
   UpdateChallengeRequest,
+  CompetitionConfigDTO,
+  UpdateCompetitionConfigRequest,
+  CompetitionState,
+  TeamSolveDTO,
 } from '@fossctf/shared';
 
 export interface DBUser {
@@ -26,7 +31,21 @@ export interface DBTeam {
   totalScore: number;
   lastSolveAt: Date | null;
   members: DBUser[];
+  solvesCount?: number;
+  totalAvailableChallenges?: number;
+  solves?: TeamSolveDTO[];
+  rank?: number;
   createdAt: Date;
+}
+
+export interface DBCompetitionConfig {
+  id: string;
+  title: string;
+  description: string;
+  startTime: Date | null;
+  endTime: Date | null;
+  isPaused: boolean;
+  updatedAt: Date;
 }
 
 export interface DBCategory {
@@ -96,6 +115,15 @@ class MemoryCTFStore {
   solves: DBSolve[] = [];
   sessions: Map<string, DBTeamChallengeSession> = new Map(); // key: `${teamId}:${challengeId}`
   unlockedHints: Set<string> = new Set(); // "teamId:hintId"
+  competitionConfig: DBCompetitionConfig = {
+    id: 'main',
+    title: 'FOSS CTF 2026',
+    description: 'Official University Capture The Flag Competition organized by FOSS Club.',
+    startTime: null,
+    endTime: null,
+    isPaused: false,
+    updatedAt: new Date(),
+  };
 
   constructor() {
     this.seed();
@@ -375,19 +403,50 @@ export const dbService = {
     if (hasDb) {
       const t = await prisma.team.findUnique({
         where: { id },
-        include: { members: true },
+        include: {
+          members: true,
+          solves: {
+            include: {
+              challenge: {
+                include: { category: true },
+              },
+            },
+            orderBy: { solvedAt: 'desc' },
+          },
+        },
       });
       if (!t) return null;
+
+      const publishedSolves = t.solves.filter((s) => s.challenge.isPublished);
+      const totalScore = publishedSolves.reduce((sum, s) => sum + s.pointsAwarded, 0);
+      const totalAvailable = await prisma.challenge.count({
+        where: { isPublished: true, isArchived: false },
+      });
+
+      const scoreboard = await this.getScoreboard();
+      const rankEntry = scoreboard.find((entry) => entry.teamId === t.id);
+
       return {
         id: t.id,
         name: t.name,
         externalId: t.externalId,
-        totalScore: t.totalScore,
+        totalScore,
         lastSolveAt: t.lastSolveAt,
+        solvesCount: publishedSolves.length,
+        totalAvailableChallenges: totalAvailable,
+        rank: rankEntry ? rankEntry.rank : undefined,
+        solves: publishedSolves.map((s) => ({
+          challengeId: s.challengeId,
+          challengeTitle: s.challenge.title,
+          categoryName: s.challenge.category.name,
+          pointsAwarded: s.pointsAwarded,
+          solvedAt: s.solvedAt.toISOString(),
+          isFirstBlood: s.isFirstBlood,
+        })),
         members: t.members.map((m) => ({
           id: m.id,
-          email: m.email,
           username: m.username,
+          email: m.email,
           role: m.role as Role,
           teamId: m.teamId,
           createdAt: m.createdAt,
@@ -395,10 +454,56 @@ export const dbService = {
         createdAt: t.createdAt,
       };
     }
+
     const t = memoryStore.teams.get(id);
     if (!t) return null;
     t.members = Array.from(memoryStore.users.values()).filter((u) => u.teamId === t.id);
-    return t;
+
+    const teamSolves = memoryStore.solves.filter((s) => s.teamId === t.id);
+    const publishedSolves = teamSolves
+      .map((s) => {
+        const chal = memoryStore.challenges.find((c) => c.id === s.challengeId);
+        if (!chal || !chal.isPublished) return null;
+        const cat = memoryStore.categories.find((c) => c.id === chal.categoryId);
+        return {
+          challengeId: s.challengeId,
+          challengeTitle: chal.title,
+          categoryName: cat?.name || 'General',
+          pointsAwarded: s.pointsAwarded,
+          solvedAt: s.solvedAt.toISOString(),
+          isFirstBlood: s.isFirstBlood,
+        };
+      })
+      .filter((s): s is NonNullable<typeof s> => s !== null);
+
+    const totalScore = publishedSolves.reduce((sum, s) => sum + s.pointsAwarded, 0);
+    const totalAvailable = memoryStore.challenges.filter(
+      (c) => c.isPublished && !c.isArchived
+    ).length;
+
+    const scoreboard = await this.getScoreboard();
+    const rankEntry = scoreboard.find((entry) => entry.teamId === t.id);
+
+    return {
+      id: t.id,
+      name: t.name,
+      externalId: t.externalId,
+      totalScore,
+      lastSolveAt: t.lastSolveAt,
+      solvesCount: publishedSolves.length,
+      totalAvailableChallenges: totalAvailable,
+      rank: rankEntry ? rankEntry.rank : undefined,
+      solves: publishedSolves,
+      members: t.members.map((m) => ({
+        id: m.id,
+        username: m.username,
+        email: m.email,
+        role: m.role as Role,
+        teamId: m.teamId,
+        createdAt: m.createdAt,
+      })),
+      createdAt: t.createdAt,
+    };
   },
 
   async getTeamByName(name: string): Promise<DBTeam | null> {
@@ -931,38 +1036,83 @@ export const dbService = {
     const hasDb = await checkPrisma();
     if (hasDb) {
       const teams = await prisma.team.findMany({
-        where: { totalScore: { gt: 0 } },
-        orderBy: [{ totalScore: 'desc' }, { lastSolveAt: 'asc' }],
         include: {
-          solves: true,
+          solves: {
+            select: {
+              pointsAwarded: true,
+              solvedAt: true,
+            },
+          },
         },
       });
 
-      return teams.map((t, index) => ({
+      const calculated = teams
+        .map((t) => {
+          const totalScore = t.solves.reduce((sum, s) => sum + s.pointsAwarded, 0);
+          const solvesCount = t.solves.length;
+          let lastSolveAt: Date | null = null;
+          if (t.solves.length > 0) {
+            lastSolveAt = new Date(Math.max(...t.solves.map((s) => s.solvedAt.getTime())));
+          }
+          return {
+            teamId: t.id,
+            teamName: t.name,
+            totalScore,
+            solvesCount,
+            lastSolveAt,
+          };
+        })
+        .filter((t) => t.totalScore > 0)
+        .sort((a, b) => {
+          if (b.totalScore !== a.totalScore) return b.totalScore - a.totalScore;
+          const timeA = a.lastSolveAt ? a.lastSolveAt.getTime() : Infinity;
+          const timeB = b.lastSolveAt ? b.lastSolveAt.getTime() : Infinity;
+          if (timeA !== timeB) return timeA - timeB;
+          return a.teamId.localeCompare(b.teamId);
+        });
+
+      return calculated.map((t, index) => ({
         rank: index + 1,
-        teamId: t.id,
-        teamName: t.name,
+        teamId: t.teamId,
+        teamName: t.teamName,
         totalScore: t.totalScore,
-        solvesCount: t.solves.length,
+        solvesCount: t.solvesCount,
         lastSolveAt: t.lastSolveAt ? t.lastSolveAt.toISOString() : null,
       }));
     }
 
-    const allTeams = Array.from(memoryStore.teams.values())
+    const calculated = Array.from(memoryStore.teams.values())
+      .map((t) => {
+        const teamSolves = memoryStore.solves.filter((s) => s.teamId === t.id);
+        const totalScore = teamSolves.reduce((sum, s) => sum + s.pointsAwarded, 0);
+        const solvesCount = teamSolves.length;
+        let lastSolveAt: Date | null = null;
+        if (teamSolves.length > 0) {
+          lastSolveAt = new Date(Math.max(...teamSolves.map((s) => s.solvedAt.getTime())));
+        }
+        return {
+          teamId: t.id,
+          teamName: t.name,
+          totalScore,
+          solvesCount,
+          lastSolveAt,
+        };
+      })
       .filter((t) => t.totalScore > 0)
       .sort((a, b) => {
         if (b.totalScore !== a.totalScore) return b.totalScore - a.totalScore;
         const timeA = a.lastSolveAt ? a.lastSolveAt.getTime() : Infinity;
         const timeB = b.lastSolveAt ? b.lastSolveAt.getTime() : Infinity;
-        return timeA - timeB;
+        if (timeA !== timeB) return timeA - timeB;
+        return a.teamId.localeCompare(b.teamId);
       });
 
-    return allTeams.map((t, index) => ({
+    return calculated.map((t, index) => ({
       rank: index + 1,
-      teamId: t.id,
-      teamName: t.name,
+      teamId: t.teamId,
+      teamName: t.teamName,
       totalScore: t.totalScore,
-      solvesCount: memoryStore.solves.filter((s) => s.teamId === t.id).length,
+      solvesCount: t.solvesCount,
       lastSolveAt: t.lastSolveAt ? t.lastSolveAt.toISOString() : null,
     }));
   },
@@ -1501,6 +1651,165 @@ export const dbService = {
 
     memoryStore.challenges.splice(chIndex, 1);
     return { success: true, message: 'Challenge deleted successfully' };
+  },
+
+  /**
+   * Competition Lifecycle & Engine Management
+   */
+  async getCompetitionConfig(): Promise<CompetitionConfigDTO> {
+    const hasDb = await checkPrisma();
+    const now = Date.now();
+
+    if (hasDb) {
+      const record = await prisma.competitionConfig.findUnique({
+        where: { key: 'competition' },
+      });
+
+      if (record) {
+        try {
+          const parsed = JSON.parse(record.value);
+          const startTime = parsed.startTime ? new Date(parsed.startTime) : null;
+          const endTime = parsed.endTime ? new Date(parsed.endTime) : null;
+          const isPaused = Boolean(parsed.isPaused);
+
+          let status: CompetitionState = 'LIVE';
+          if (isPaused) {
+            status = 'PAUSED';
+          } else if (startTime && now < startTime.getTime()) {
+            status = 'SCHEDULED';
+          } else if (endTime && now > endTime.getTime()) {
+            status = 'ENDED';
+          }
+
+          return {
+            id: 'main',
+            title: parsed.title || 'FOSS CTF 2026',
+            description: parsed.description || 'Official University Capture The Flag Competition.',
+            startTime: startTime ? startTime.toISOString() : null,
+            endTime: endTime ? endTime.toISOString() : null,
+            isPaused,
+            state: status,
+            status,
+            serverTime: new Date(now).toISOString(),
+          };
+        } catch {
+          // fallback if corrupt
+        }
+      }
+
+      // Default when not yet configured
+      const isDev = config.isDev;
+      const defaultStatus: CompetitionState = isDev ? 'LIVE' : 'DRAFT';
+      return {
+        id: 'main',
+        title: 'FOSS CTF 2026',
+        description: 'Official University Capture The Flag Competition organized by FOSS Club.',
+        startTime: null,
+        endTime: null,
+        isPaused: !isDev,
+        state: defaultStatus,
+        status: defaultStatus,
+        serverTime: new Date(now).toISOString(),
+      };
+    }
+
+    // Memory Store fallback
+    const cfg = memoryStore.competitionConfig;
+    let status: CompetitionState = 'LIVE';
+    if (cfg.isPaused) {
+      status = 'PAUSED';
+    } else if (cfg.startTime && now < cfg.startTime.getTime()) {
+      status = 'SCHEDULED';
+    } else if (cfg.endTime && now > cfg.endTime.getTime()) {
+      status = 'ENDED';
+    }
+
+    return {
+      id: cfg.id,
+      title: cfg.title,
+      description: cfg.description,
+      startTime: cfg.startTime ? cfg.startTime.toISOString() : null,
+      endTime: cfg.endTime ? cfg.endTime.toISOString() : null,
+      isPaused: cfg.isPaused,
+      state: status,
+      status,
+      serverTime: new Date(now).toISOString(),
+    };
+  },
+
+  async updateCompetitionConfig(data: UpdateCompetitionConfigRequest): Promise<CompetitionConfigDTO> {
+    const hasDb = await checkPrisma();
+    const current = await this.getCompetitionConfig();
+
+    const title = data.title !== undefined ? data.title.trim() : current.title;
+    const description = data.description !== undefined ? data.description.trim() : current.description;
+    const startTimeStr = data.startTime !== undefined ? data.startTime : current.startTime;
+    const endTimeStr = data.endTime !== undefined ? data.endTime : current.endTime;
+    const isPaused = data.isPaused !== undefined ? data.isPaused : current.isPaused;
+
+    const startTime = startTimeStr ? new Date(startTimeStr) : null;
+    const endTime = endTimeStr ? new Date(endTimeStr) : null;
+
+    if (startTime && endTime && endTime.getTime() <= startTime.getTime()) {
+      throw new Error('End time must be after start time');
+    }
+
+    const now = Date.now();
+    let status: CompetitionState = 'LIVE';
+    if (isPaused) {
+      status = 'PAUSED';
+    } else if (startTime && now < startTime.getTime()) {
+      status = 'SCHEDULED';
+    } else if (endTime && now > endTime.getTime()) {
+      status = 'ENDED';
+    }
+
+    const payload = {
+      title,
+      description,
+      startTime: startTime ? startTime.toISOString() : null,
+      endTime: endTime ? endTime.toISOString() : null,
+      isPaused,
+    };
+
+    if (hasDb) {
+      await prisma.competitionConfig.upsert({
+        where: { key: 'competition' },
+        create: {
+          key: 'competition',
+          value: JSON.stringify(payload),
+        },
+        update: {
+          value: JSON.stringify(payload),
+        },
+      });
+
+      return {
+        id: 'main',
+        ...payload,
+        state: status,
+        status,
+        serverTime: new Date(now).toISOString(),
+      };
+    }
+
+    memoryStore.competitionConfig = {
+      id: 'main',
+      title,
+      description,
+      startTime,
+      endTime,
+      isPaused,
+      updatedAt: new Date(now),
+    };
+
+    return {
+      id: 'main',
+      ...payload,
+      state: status,
+      status,
+      serverTime: new Date(now).toISOString(),
+    };
   },
 };
 
