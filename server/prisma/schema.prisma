@@ -1,0 +1,172 @@
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+enum Role {
+  USER
+  ADMIN
+}
+
+enum Difficulty {
+  EASY
+  MEDIUM
+  HARD
+  INSANE
+}
+
+model User {
+  id            String         @id @default(uuid())
+  email         String         @unique
+  username      String         @unique
+  role          Role           @default(USER)
+  oidcSub       String?        @unique
+  avatarUrl     String?
+  teamId        String?
+  team          Team?          @relation(fields: [teamId], references: [id], onDelete: SetNull)
+  submissions   Submission[]
+  solves        Solve[]
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+
+  @@index([teamId])
+  @@index([role])
+}
+
+model Team {
+  id            String         @id @default(uuid())
+  name          String         @unique
+  inviteCode    String         @unique
+  members       User[]
+  submissions   Submission[]
+  solves        Solve[]
+  hintUnlocks   HintUnlock[]
+  totalScore    Int            @default(0)
+  lastSolveAt   DateTime?
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+
+  @@index([totalScore(sort: Desc), lastSolveAt(sort: Asc)])
+}
+
+model Category {
+  id            String         @id @default(uuid())
+  name          String         @unique
+  description   String?
+  sortOrder     Int            @default(0)
+  challenges    Challenge[]
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+}
+
+model Challenge {
+  id            String         @id @default(uuid())
+  slug          String         @unique
+  title         String
+  description   String
+  categoryId    String
+  category      Category       @relation(fields: [categoryId], references: [id])
+  difficulty    Difficulty     @default(EASY)
+  points        Int            @default(100)
+  isPublished   Boolean        @default(false)
+  author        String?
+  sortOrder     Int            @default(0)
+  flags         Flag[]
+  hints         Hint[]
+  submissions   Submission[]
+  solves        Solve[]
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+
+  @@index([categoryId, isPublished])
+}
+
+model Flag {
+  id              String       @id @default(uuid())
+  challengeId     String
+  challenge       Challenge    @relation(fields: [challengeId], references: [id], onDelete: Cascade)
+  flagHash        String
+  isCaseSensitive Boolean      @default(true)
+  isRegex         Boolean      @default(false)
+  createdAt       DateTime     @default(now())
+
+  @@index([challengeId])
+}
+
+model Hint {
+  id            String         @id @default(uuid())
+  challengeId   String
+  challenge     Challenge      @relation(fields: [challengeId], references: [id], onDelete: Cascade)
+  content       String
+  cost          Int            @default(0)
+  sortOrder     Int            @default(0)
+  unlocks       HintUnlock[]
+  createdAt     DateTime       @default(now())
+
+  @@index([challengeId])
+}
+
+model HintUnlock {
+  id            String         @id @default(uuid())
+  teamId        String
+  team          Team           @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  hintId        String
+  hint          Hint           @relation(fields: [hintId], references: [id], onDelete: Cascade)
+  unlockedAt    DateTime       @default(now())
+
+  @@unique([teamId, hintId])
+}
+
+model Submission {
+  id            String         @id @default(uuid())
+  challengeId   String
+  challenge     Challenge      @relation(fields: [challengeId], references: [id], onDelete: Cascade)
+  teamId        String
+  team          Team           @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  userId        String
+  user          User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  submittedFlag String
+  isCorrect     Boolean
+  ipAddress     String?
+  createdAt     DateTime       @default(now())
+
+  @@index([teamId, challengeId])
+  @@index([createdAt])
+}
+
+model Solve {
+  id            String         @id @default(uuid())
+  challengeId   String
+  challenge     Challenge      @relation(fields: [challengeId], references: [id], onDelete: Cascade)
+  teamId        String
+  team          Team           @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  userId        String
+  user          User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  pointsAwarded Int
+  isFirstBlood  Boolean        @default(false)
+  solvedAt      DateTime       @default(now())
+
+  @@unique([teamId, challengeId])
+  @@index([teamId])
+  @@index([challengeId])
+  @@index([solvedAt])
+}
+
+model Announcement {
+  id            String         @id @default(uuid())
+  title         String
+  content       String
+  isPinned      Boolean        @default(false)
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+}
+
+model CompetitionConfig {
+  key           String         @id
+  value         String
+  updatedAt     DateTime       @updatedAt
+}
