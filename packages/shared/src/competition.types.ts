@@ -19,3 +19,17 @@ export interface UpdateCompetitionConfigRequest {
   endTime?: string | null;
   isPaused?: boolean;
 }
+
+export type AttemptStatus = 'IN_PROGRESS' | 'COMPLETED';
+
+export interface CompetitionAttemptDTO {
+  id: string;
+  teamId: string;
+  status: AttemptStatus;
+  startedAt: string;
+  completedAt: string | null;
+  elapsedMs: number | null;
+  createdAt: string;
+  updatedAt: string;
+}
+

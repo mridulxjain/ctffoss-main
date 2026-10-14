@@ -13,6 +13,8 @@ import {
   UpdateCompetitionConfigRequest,
   CompetitionState,
   TeamSolveDTO,
+  CompetitionAttemptDTO,
+  AttemptStatus,
 } from '@fossctf/shared';
 
 export interface DBUser {
@@ -103,6 +105,17 @@ export interface DBTeamChallengeSession {
   completedAt: Date | null;
 }
 
+export interface DBCompetitionAttempt {
+  id: string;
+  teamId: string;
+  status: 'IN_PROGRESS' | 'COMPLETED';
+  startedAt: Date;
+  completedAt: Date | null;
+  elapsedMs: number | null;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
 /**
  * In-memory fallback dataset for seamless zero-config local development
  * when PostgreSQL is not yet running or configured.
@@ -114,6 +127,7 @@ class MemoryCTFStore {
   challenges: DBChallenge[] = [];
   solves: DBSolve[] = [];
   sessions: Map<string, DBTeamChallengeSession> = new Map(); // key: `${teamId}:${challengeId}`
+  attempts: Map<string, DBCompetitionAttempt> = new Map(); // key: teamId
   unlockedHints: Set<string> = new Set(); // "teamId:hintId"
   competitionConfig: DBCompetitionConfig = {
     id: 'main',
@@ -1810,6 +1824,155 @@ export const dbService = {
       status,
       serverTime: new Date(now).toISOString(),
     };
+  },
+
+  /**
+   * Timed Competition Attempt Management
+   */
+  async getCompetitionAttempt(teamId: string): Promise<CompetitionAttemptDTO | null> {
+    const hasDb = await checkPrisma();
+    if (hasDb) {
+      const attempt = await prisma.competitionAttempt.findUnique({
+        where: { teamId },
+      });
+      if (!attempt) return null;
+      return {
+        id: attempt.id,
+        teamId: attempt.teamId,
+        status: attempt.status as AttemptStatus,
+        startedAt: attempt.startedAt.toISOString(),
+        completedAt: attempt.completedAt ? attempt.completedAt.toISOString() : null,
+        elapsedMs: attempt.elapsedMs,
+        createdAt: attempt.createdAt.toISOString(),
+        updatedAt: attempt.updatedAt.toISOString(),
+      };
+    }
+
+    const attempt = memoryStore.attempts.get(teamId);
+    if (!attempt) return null;
+    return {
+      id: attempt.id,
+      teamId: attempt.teamId,
+      status: attempt.status as AttemptStatus,
+      startedAt: attempt.startedAt.toISOString(),
+      completedAt: attempt.completedAt ? attempt.completedAt.toISOString() : null,
+      elapsedMs: attempt.elapsedMs,
+      createdAt: attempt.createdAt.toISOString(),
+      updatedAt: attempt.updatedAt.toISOString(),
+    };
+  },
+
+  async startCompetitionAttempt(teamId: string): Promise<CompetitionAttemptDTO> {
+    // 1. Enforce competition lifecycle rules
+    const compConfig = await this.getCompetitionConfig();
+    if (compConfig.status === 'PAUSED' || compConfig.status === 'DRAFT') {
+      const err = new Error('The competition is currently not accepting attempts.');
+      (err as any).code = 'COMPETITION_INACTIVE';
+      throw err;
+    }
+    if (compConfig.status === 'SCHEDULED') {
+      const err = new Error('The competition has not started yet. Attempts cannot be started.');
+      (err as any).code = 'COMPETITION_SCHEDULED';
+      throw err;
+    }
+    if (compConfig.status === 'ENDED') {
+      const err = new Error('The competition has ended. Attempts can no longer be started.');
+      (err as any).code = 'COMPETITION_ENDED';
+      throw err;
+    }
+
+    const hasDb = await checkPrisma();
+    const now = new Date();
+
+    if (hasDb) {
+      // Atomic upsert: If an attempt already exists, update nothing and return the existing attempt!
+      await prisma.competitionAttempt.upsert({
+        where: { teamId },
+        update: {}, // Preserve existing startedAt, status, completedAt, etc.
+        create: {
+          teamId,
+          status: 'IN_PROGRESS',
+          startedAt: now,
+        },
+      });
+
+      return (await this.getCompetitionAttempt(teamId))!;
+    }
+
+    let attempt = memoryStore.attempts.get(teamId);
+    if (!attempt) {
+      attempt = {
+        id: `att-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+        teamId,
+        status: 'IN_PROGRESS',
+        startedAt: now,
+        completedAt: null,
+        elapsedMs: null,
+        createdAt: now,
+        updatedAt: now,
+      };
+      memoryStore.attempts.set(teamId, attempt);
+    }
+
+    return (await this.getCompetitionAttempt(teamId))!;
+  },
+
+  async completeCompetitionAttempt(teamId: string): Promise<CompetitionAttemptDTO> {
+    const hasDb = await checkPrisma();
+    const now = new Date();
+
+    if (hasDb) {
+      const existing = await prisma.competitionAttempt.findUnique({
+        where: { teamId },
+      });
+
+      if (!existing) {
+        const err = new Error('Competition attempt not found for this team.');
+        (err as any).code = 'ATTEMPT_NOT_FOUND';
+        throw err;
+      }
+
+      // If already completed, idempotent return without modifying completedAt or elapsedMs!
+      if (existing.status === 'COMPLETED') {
+        return (await this.getCompetitionAttempt(teamId))!;
+      }
+
+      const elapsedMs = Math.max(0, now.getTime() - existing.startedAt.getTime());
+
+      // Concurrency protection: update only if status is still IN_PROGRESS
+      await prisma.competitionAttempt.updateMany({
+        where: {
+          teamId,
+          status: 'IN_PROGRESS',
+        },
+        data: {
+          status: 'COMPLETED',
+          completedAt: now,
+          elapsedMs,
+        },
+      });
+
+      return (await this.getCompetitionAttempt(teamId))!;
+    }
+
+    const attempt = memoryStore.attempts.get(teamId);
+    if (!attempt) {
+      const err = new Error('Competition attempt not found for this team.');
+      (err as any).code = 'ATTEMPT_NOT_FOUND';
+      throw err;
+    }
+
+    if (attempt.status === 'COMPLETED') {
+      return (await this.getCompetitionAttempt(teamId))!;
+    }
+
+    const elapsedMs = Math.max(0, now.getTime() - attempt.startedAt.getTime());
+    attempt.status = 'COMPLETED';
+    attempt.completedAt = now;
+    attempt.elapsedMs = elapsedMs;
+    attempt.updatedAt = now;
+
+    return (await this.getCompetitionAttempt(teamId))!;
   },
 };
 

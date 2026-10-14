@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { app } from '../src/app';
 import { signToken } from '../src/utils/crypto';
+import { competitionAttemptService } from '../src/services/competitionAttempt.service';
 import http from 'http';
 
 let server: http.Server;
@@ -929,5 +930,307 @@ test('COMPETITION LIFECYCLE & SCOREBOARD: Boundary enforcement, deterministic sc
     assert.equal(team2Entry, undefined);
   });
 });
+
+test('PHASE 5A: Timed competition attempt system, concurrency, and completion service', async (t) => {
+  const adminToken = signToken({
+    id: 'usr-admin-01',
+    email: 'admin@fossclub.tech',
+    username: 'foss_admin',
+    role: 'ADMIN',
+  });
+
+  const aliceToken = signToken({
+    id: 'usr-alice-02',
+    email: 'alice@university.edu',
+    username: 'alice_sec',
+    role: 'USER',
+    teamId: 'team-binary-beasts',
+  });
+
+  const bobToken = signToken({
+    id: 'usr-bob-03',
+    email: 'bob@university.edu',
+    username: 'bob_0x',
+    role: 'USER',
+    teamId: 'team-binary-beasts',
+  });
+
+  const daveToken = signToken({
+    id: 'usr-dave-05',
+    email: 'dave@university.edu',
+    username: 'dave_bravo',
+    role: 'USER',
+    teamId: 'team-null-pointers',
+  });
+
+  const charlieNoTeamToken = signToken({
+    id: 'usr-charlie-04',
+    email: 'charlie@university.edu',
+    username: 'charlie_solo',
+    role: 'USER',
+    teamId: null,
+  });
+
+  await t.test('Unauthorized access is rejected (401 Unauthorized)', async () => {
+    const resStart = await makeRequest('POST', '/api/v1/competition/attempt/start');
+    assert.equal(resStart.status, 401);
+    assert.equal(resStart.body.error.code, 'UNAUTHORIZED');
+
+    const resGet = await makeRequest('GET', '/api/v1/competition/attempt');
+    assert.equal(resGet.status, 401);
+    assert.equal(resGet.body.error.code, 'UNAUTHORIZED');
+  });
+
+  await t.test('Participant without a team cannot start or view attempts (403 TEAM_REQUIRED)', async () => {
+    const resStart = await makeRequest(
+      'POST',
+      '/api/v1/competition/attempt/start',
+      { Authorization: `Bearer ${charlieNoTeamToken}` }
+    );
+    assert.equal(resStart.status, 403);
+    assert.equal(resStart.body.error.code, 'TEAM_REQUIRED');
+
+    const resGet = await makeRequest(
+      'GET',
+      '/api/v1/competition/attempt',
+      { Authorization: `Bearer ${charlieNoTeamToken}` }
+    );
+    assert.equal(resGet.status, 403);
+    assert.equal(resGet.body.error.code, 'TEAM_REQUIRED');
+  });
+
+  await t.test('Competition lifecycle enforcement: attempts blocked when competition is not LIVE', async () => {
+    // 1. SCHEDULED state (future start time)
+    await makeRequest(
+      'PUT',
+      '/api/v1/admin/competition',
+      { Authorization: `Bearer ${adminToken}` },
+      {
+        startTime: new Date(Date.now() + 3600000).toISOString(),
+        endTime: new Date(Date.now() + 7200000).toISOString(),
+        isPaused: false,
+      }
+    );
+
+    const resScheduled = await makeRequest(
+      'POST',
+      '/api/v1/competition/attempt/start',
+      { Authorization: `Bearer ${aliceToken}` }
+    );
+    assert.equal(resScheduled.status, 400);
+    assert.equal(resScheduled.body.error.code, 'COMPETITION_SCHEDULED');
+
+    // 2. ENDED state (past end time)
+    await makeRequest(
+      'PUT',
+      '/api/v1/admin/competition',
+      { Authorization: `Bearer ${adminToken}` },
+      {
+        startTime: new Date(Date.now() - 7200000).toISOString(),
+        endTime: new Date(Date.now() - 3600000).toISOString(),
+        isPaused: false,
+      }
+    );
+
+    const resEnded = await makeRequest(
+      'POST',
+      '/api/v1/competition/attempt/start',
+      { Authorization: `Bearer ${aliceToken}` }
+    );
+    assert.equal(resEnded.status, 400);
+    assert.equal(resEnded.body.error.code, 'COMPETITION_ENDED');
+
+    // 3. PAUSED state
+    await makeRequest(
+      'PUT',
+      '/api/v1/admin/competition',
+      { Authorization: `Bearer ${adminToken}` },
+      {
+        startTime: new Date(Date.now() - 3600000).toISOString(),
+        endTime: new Date(Date.now() + 3600000).toISOString(),
+        isPaused: true,
+      }
+    );
+
+    const resPaused = await makeRequest(
+      'POST',
+      '/api/v1/competition/attempt/start',
+      { Authorization: `Bearer ${aliceToken}` }
+    );
+    assert.equal(resPaused.status, 400);
+    assert.equal(resPaused.body.error.code, 'COMPETITION_INACTIVE');
+
+    // Restore LIVE state for subsequent tests
+    await makeRequest(
+      'PUT',
+      '/api/v1/admin/competition',
+      { Authorization: `Bearer ${adminToken}` },
+      {
+        startTime: null,
+        endTime: null,
+        isPaused: false,
+      }
+    );
+  });
+
+  let aliceInitialAttemptId: string;
+  let aliceInitialStartedAt: string;
+
+  await t.test('Starting an attempt: records startedAt using server clock and sets IN_PROGRESS', async () => {
+    const beforeStart = Date.now();
+    const res = await makeRequest(
+      'POST',
+      '/api/v1/competition/attempt/start',
+      { Authorization: `Bearer ${aliceToken}` }
+    );
+    const afterStart = Date.now();
+
+    assert.equal(res.status, 200);
+    assert.equal(res.body.success, true);
+    assert.ok(res.body.data.id);
+    assert.equal(res.body.data.teamId, 'team-binary-beasts');
+    assert.equal(res.body.data.status, 'IN_PROGRESS');
+    assert.equal(res.body.data.completedAt, null);
+    assert.equal(res.body.data.elapsedMs, null);
+
+    const startedTime = new Date(res.body.data.startedAt).getTime();
+    assert.ok(startedTime >= beforeStart - 500 && startedTime <= afterStart + 500);
+
+    aliceInitialAttemptId = res.body.data.id;
+    aliceInitialStartedAt = res.body.data.startedAt;
+  });
+
+  await t.test('Repeated start requests do not reset timer or create duplicate attempts', async () => {
+    const res = await makeRequest(
+      'POST',
+      '/api/v1/competition/attempt/start',
+      { Authorization: `Bearer ${aliceToken}` }
+    );
+
+    assert.equal(res.status, 200);
+    assert.equal(res.body.success, true);
+    assert.equal(res.body.data.id, aliceInitialAttemptId);
+    assert.equal(res.body.data.startedAt, aliceInitialStartedAt);
+    assert.equal(res.body.data.status, 'IN_PROGRESS');
+  });
+
+  await t.test('Teammates share the same team attempt and timer (Bob retrieves Alice attempt)', async () => {
+    const res = await makeRequest(
+      'GET',
+      '/api/v1/competition/attempt',
+      { Authorization: `Bearer ${bobToken}` }
+    );
+
+    assert.equal(res.status, 200);
+    assert.equal(res.body.success, true);
+    assert.equal(res.body.data.id, aliceInitialAttemptId);
+    assert.equal(res.body.data.teamId, 'team-binary-beasts');
+    assert.equal(res.body.data.startedAt, aliceInitialStartedAt);
+    assert.equal(res.body.data.status, 'IN_PROGRESS');
+    assert.equal(res.body.data.completedAt, null);
+    assert.equal(res.body.data.elapsedMs, null);
+  });
+
+  await t.test('Concurrent start requests return the same single attempt', async () => {
+    // Dave (Team Null Pointers) initiates 5 concurrent start requests
+    const promises = Array.from({ length: 5 }, () =>
+      makeRequest(
+        'POST',
+        '/api/v1/competition/attempt/start',
+        { Authorization: `Bearer ${daveToken}` }
+      )
+    );
+
+    const results = await Promise.all(promises);
+    for (const res of results) {
+      assert.equal(res.status, 200);
+      assert.equal(res.body.success, true);
+      assert.equal(res.body.data.teamId, 'team-null-pointers');
+      assert.equal(res.body.data.status, 'IN_PROGRESS');
+    }
+
+    // All concurrent requests must have the exact same attempt id and start timestamp
+    const firstId = results[0].body.data.id;
+    const firstStartedAt = results[0].body.data.startedAt;
+    for (const res of results) {
+      assert.equal(res.body.data.id, firstId);
+      assert.equal(res.body.data.startedAt, firstStartedAt);
+    }
+  });
+
+  await t.test('Attempt persistence across requests and client isolation (Dave sees only team-null-pointers)', async () => {
+    const resDave = await makeRequest(
+      'GET',
+      '/api/v1/competition/attempt',
+      { Authorization: `Bearer ${daveToken}` }
+    );
+
+    assert.equal(resDave.status, 200);
+    assert.equal(resDave.body.data.teamId, 'team-null-pointers');
+    assert.notEqual(resDave.body.data.id, aliceInitialAttemptId);
+  });
+
+  let completedTimestamp: string;
+  let recordedElapsedMs: number;
+
+  await t.test('Completion service: calculates elapsedMs and marks attempt COMPLETED', async () => {
+    // Wait 50ms so elapsedMs is guaranteed strictly positive
+    await new Promise((resolve) => setTimeout(resolve, 50));
+
+    const completedAttempt = await competitionAttemptService.completeAttempt('team-binary-beasts');
+
+    assert.equal(completedAttempt.id, aliceInitialAttemptId);
+    assert.equal(completedAttempt.teamId, 'team-binary-beasts');
+    assert.equal(completedAttempt.status, 'COMPLETED');
+    assert.ok(completedAttempt.completedAt);
+    assert.ok(typeof completedAttempt.elapsedMs === 'number');
+    assert.ok(completedAttempt.elapsedMs >= 50);
+
+    const startMs = new Date(completedAttempt.startedAt).getTime();
+    const endMs = new Date(completedAttempt.completedAt).getTime();
+    assert.equal(completedAttempt.elapsedMs, endMs - startMs);
+
+    completedTimestamp = completedAttempt.completedAt;
+    recordedElapsedMs = completedAttempt.elapsedMs;
+  });
+
+  await t.test('Duplicate completion attempts are idempotent and preserve first completion time', async () => {
+    await new Promise((resolve) => setTimeout(resolve, 50));
+
+    // Call completion service again
+    const reCompleted = await competitionAttemptService.completeAttempt('team-binary-beasts');
+
+    assert.equal(reCompleted.status, 'COMPLETED');
+    assert.equal(reCompleted.completedAt, completedTimestamp);
+    assert.equal(reCompleted.elapsedMs, recordedElapsedMs);
+  });
+
+  await t.test('Starting an already completed attempt returns the completed state', async () => {
+    const res = await makeRequest(
+      'POST',
+      '/api/v1/competition/attempt/start',
+      { Authorization: `Bearer ${aliceToken}` }
+    );
+
+    assert.equal(res.status, 200);
+    assert.equal(res.body.success, true);
+    assert.equal(res.body.data.id, aliceInitialAttemptId);
+    assert.equal(res.body.data.status, 'COMPLETED');
+    assert.equal(res.body.data.completedAt, completedTimestamp);
+    assert.equal(res.body.data.elapsedMs, recordedElapsedMs);
+  });
+
+  await t.test('Attempt completion for non-existent team throws ATTEMPT_NOT_FOUND', async () => {
+    await assert.rejects(
+      async () => {
+        await competitionAttemptService.completeAttempt('team-non-existent-999');
+      },
+      (err: any) => {
+        return err.code === 'ATTEMPT_NOT_FOUND' || err.message.includes('not found');
+      }
+    );
+  });
+});
+
 
 
