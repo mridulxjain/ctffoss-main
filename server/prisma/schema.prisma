@@ -41,6 +41,7 @@ model Team {
   id            String                 @id @default(uuid())
   name          String                 @unique
   externalId    String?                @unique   // Stable external identifier from FOSS Club identity system
+  valenfindTeamId String?              @unique   // Stable mapping to Valenfind team identity
   inviteCode    String?                @unique   // Legacy/optional; team membership is managed externally
   members       User[]
   submissions   Submission[]

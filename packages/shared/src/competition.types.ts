@@ -33,3 +33,12 @@ export interface CompetitionAttemptDTO {
   updatedAt: string;
 }
 
+export interface SubmitAttemptFlagRequest {
+  flag: string;
+}
+
+export interface SubmitAttemptFlagResponse {
+  attempt: CompetitionAttemptDTO;
+  message: string;
+}
+

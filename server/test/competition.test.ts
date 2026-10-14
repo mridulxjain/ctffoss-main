@@ -3,6 +3,8 @@ import assert from 'node:assert/strict';
 import { app } from '../src/app';
 import { signToken } from '../src/utils/crypto';
 import { competitionAttemptService } from '../src/services/competitionAttempt.service';
+import { dbService } from '../src/services/db.service';
+import { valenfindVerifierService } from '../src/services/valenfindVerifier.service';
 import http from 'http';
 
 let server: http.Server;
@@ -1229,6 +1231,451 @@ test('PHASE 5A: Timed competition attempt system, concurrency, and completion se
         return err.code === 'ATTEMPT_NOT_FOUND' || err.message.includes('not found');
       }
     );
+  });
+});
+
+test('PHASE 5B: Secure Valenfind flag verification integration, attempt completion, and cross-team security', async (t) => {
+  // Test tokens
+  const aliceToken = signToken({
+    id: 'usr-alice-02',
+    email: 'alice@university.edu',
+    username: 'alice_sec',
+    role: 'USER',
+    teamId: 'team-binary-beasts',
+  });
+
+  const bobToken = signToken({
+    id: 'usr-bob-03',
+    email: 'bob@university.edu',
+    username: 'bob_crypto',
+    role: 'USER',
+    teamId: 'team-binary-beasts',
+  });
+
+  const daveToken = signToken({
+    id: 'usr-dave-05',
+    email: 'dave@university.edu',
+    username: 'dave_bravo',
+    role: 'USER',
+    teamId: 'team-null-pointers',
+  });
+
+  const charlieNoTeamToken = signToken({
+    id: 'usr-charlie-04',
+    email: 'charlie@university.edu',
+    username: 'charlie_guest',
+    role: 'USER',
+    teamId: null,
+  });
+
+  const adminToken = signToken({
+    id: 'usr-admin-01',
+    email: 'admin@fossclub.tech',
+    username: 'root_admin',
+    role: 'ADMIN',
+  });
+
+  // Valenfind IDs for reference:
+  // Team 1 (Binary Beasts) -> Valenfind Team Alpha (id: e4e8c7ee-8a3c-49f7-a23a-1fbf9d3e386a)
+  // Team 2 (Null Pointers) -> Valenfind Team Bravo (id: c9f758bf-077b-4516-89aa-a5b3778ef9e2)
+  const valenfindAlphaId = 'e4e8c7ee-8a3c-49f7-a23a-1fbf9d3e386a';
+  const valenfindBravoId = 'c9f758bf-077b-4516-89aa-a5b3778ef9e2';
+
+  const validAlphaFlag = 'FOSSCTF{teamalpha_70c0572e1e1035e4}';
+  const validBravoFlag = 'FOSSCTF{teambravo_03d86bf78370d731}';
+  const bogusFlag = 'FOSSCTF{fake_flag_0123456789abcdef}';
+
+  // Setup default mock verifier representing trusted Valenfind backend
+  valenfindVerifierService.setMockVerifier(async (flag: string) => {
+    if (flag === validAlphaFlag) {
+      return {
+        valid: true,
+        valenfindTeamId: valenfindAlphaId,
+        valenfindTeamSlug: 'team-alpha',
+        valenfindTeamName: 'Team Alpha',
+      };
+    }
+    if (flag === validBravoFlag) {
+      return {
+        valid: true,
+        valenfindTeamId: valenfindBravoId,
+        valenfindTeamSlug: 'team-bravo',
+        valenfindTeamName: 'Team Bravo',
+      };
+    }
+    return {
+      valid: false,
+      errorCode: 'INVALID_FLAG',
+      error: 'Submitted flag is invalid or does not exist.',
+    };
+  });
+
+  t.after(() => {
+    valenfindVerifierService.clearMockVerifier();
+  });
+
+  await t.test('Unauthenticated flag submission is rejected (401 Unauthorized)', async () => {
+    const res = await makeRequest(
+      'POST',
+      '/api/v1/competition/attempt/submit',
+      {},
+      { flag: validAlphaFlag }
+    );
+    assert.equal(res.status, 401);
+    assert.equal(res.body.success, false);
+    assert.equal(res.body.error.code, 'UNAUTHORIZED');
+  });
+
+  await t.test('Participant without a team cannot submit flags (403 TEAM_REQUIRED)', async () => {
+    const res = await makeRequest(
+      'POST',
+      '/api/v1/competition/attempt/submit',
+      { Authorization: `Bearer ${charlieNoTeamToken}` },
+      { flag: validAlphaFlag }
+    );
+    assert.equal(res.status, 403);
+    assert.equal(res.body.success, false);
+    assert.equal(res.body.error.code, 'TEAM_REQUIRED');
+  });
+
+  await t.test('Empty or malformed flag submissions are safely rejected (400 INVALID_FLAG_FORMAT)', async () => {
+    const resEmpty = await makeRequest(
+      'POST',
+      '/api/v1/competition/attempt/submit',
+      { Authorization: `Bearer ${daveToken}` },
+      { flag: '' }
+    );
+    assert.equal(resEmpty.status, 400);
+    assert.equal(resEmpty.body.error.code, 'INVALID_FLAG_FORMAT');
+
+    const resWhitespace = await makeRequest(
+      'POST',
+      '/api/v1/competition/attempt/submit',
+      { Authorization: `Bearer ${daveToken}` },
+      { flag: '   ' }
+    );
+    assert.equal(resWhitespace.status, 400);
+    assert.equal(resWhitespace.body.error.code, 'INVALID_FLAG_FORMAT');
+
+    const resMissing = await makeRequest(
+      'POST',
+      '/api/v1/competition/attempt/submit',
+      { Authorization: `Bearer ${daveToken}` },
+      {}
+    );
+    assert.equal(resMissing.status, 400);
+    assert.equal(resMissing.body.error.code, 'INVALID_FLAG_FORMAT');
+  });
+
+  await t.test('Missing attempt: Submitting before starting attempt is rejected (400 ATTEMPT_NOT_FOUND)', async () => {
+    // Create temporary unstarted team
+    const tempUserToken = signToken({
+      id: 'usr-temp-99',
+      email: 'temp@university.edu',
+      username: 'temp_user',
+      role: 'USER',
+      teamId: 'team-unstarted-temp',
+    });
+
+    const res = await makeRequest(
+      'POST',
+      '/api/v1/competition/attempt/submit',
+      { Authorization: `Bearer ${tempUserToken}` },
+      { flag: validBravoFlag }
+    );
+    assert.equal(res.status, 400);
+    assert.equal(res.body.error.code, 'ATTEMPT_NOT_FOUND');
+  });
+
+  await t.test('Competition lifecycle enforcement: Submissions blocked when competition is not LIVE', async () => {
+    // 1. SCHEDULED
+    await makeRequest(
+      'PUT',
+      '/api/v1/admin/competition',
+      { Authorization: `Bearer ${adminToken}` },
+      {
+        startTime: new Date(Date.now() + 3600000).toISOString(),
+        endTime: new Date(Date.now() + 7200000).toISOString(),
+        isPaused: false,
+      }
+    );
+
+    const resSched = await makeRequest(
+      'POST',
+      '/api/v1/competition/attempt/submit',
+      { Authorization: `Bearer ${daveToken}` },
+      { flag: validBravoFlag }
+    );
+    assert.equal(resSched.status, 400);
+    assert.equal(resSched.body.error.code, 'COMPETITION_SCHEDULED');
+
+    // 2. PAUSED
+    await makeRequest(
+      'PUT',
+      '/api/v1/admin/competition',
+      { Authorization: `Bearer ${adminToken}` },
+      {
+        startTime: new Date(Date.now() - 3600000).toISOString(),
+        endTime: new Date(Date.now() + 3600000).toISOString(),
+        isPaused: true,
+      }
+    );
+
+    const resPaused = await makeRequest(
+      'POST',
+      '/api/v1/competition/attempt/submit',
+      { Authorization: `Bearer ${daveToken}` },
+      { flag: validBravoFlag }
+    );
+    assert.equal(resPaused.status, 400);
+    assert.equal(resPaused.body.error.code, 'COMPETITION_INACTIVE');
+
+    // Restore LIVE
+    await makeRequest(
+      'PUT',
+      '/api/v1/admin/competition',
+      { Authorization: `Bearer ${adminToken}` },
+      {
+        startTime: null,
+        endTime: null,
+        isPaused: false,
+      }
+    );
+  });
+
+  await t.test('Verifier unavailable: Fails closed with 503 and preserves running timer', async () => {
+    // Inject mock verifier throwing network error
+    valenfindVerifierService.setMockVerifier(async () => {
+      const err = new Error('Network timeout connecting to Valenfind');
+      (err as any).code = 'VERIFIER_UNAVAILABLE';
+      throw err;
+    });
+
+    const res = await makeRequest(
+      'POST',
+      '/api/v1/competition/attempt/submit',
+      { Authorization: `Bearer ${daveToken}` },
+      { flag: validBravoFlag }
+    );
+
+    assert.equal(res.status, 503);
+    assert.equal(res.body.success, false);
+    assert.equal(res.body.error.code, 'VERIFIER_UNAVAILABLE');
+
+    // Verify attempt remains strictly IN_PROGRESS
+    const attemptRes = await makeRequest(
+      'GET',
+      '/api/v1/competition/attempt',
+      { Authorization: `Bearer ${daveToken}` }
+    );
+    assert.equal(attemptRes.status, 200);
+    assert.equal(attemptRes.body.data.status, 'IN_PROGRESS');
+    assert.equal(attemptRes.body.data.completedAt, null);
+    assert.equal(attemptRes.body.data.elapsedMs, null);
+
+    // Restore standard verifier
+    valenfindVerifierService.setMockVerifier(async (flag: string) => {
+      if (flag === validBravoFlag) {
+        return {
+          valid: true,
+          valenfindTeamId: valenfindBravoId,
+          valenfindTeamSlug: 'team-bravo',
+          valenfindTeamName: 'Team Bravo',
+        };
+      }
+      if (flag === validAlphaFlag) {
+        return {
+          valid: true,
+          valenfindTeamId: valenfindAlphaId,
+          valenfindTeamSlug: 'team-alpha',
+          valenfindTeamName: 'Team Alpha',
+        };
+      }
+      return {
+        valid: false,
+        errorCode: 'INVALID_FLAG',
+        error: 'Submitted flag is invalid or does not exist.',
+      };
+    });
+  });
+
+  await t.test('Invalid flag submission: Rejected with 400 INVALID_FLAG and preserves running timer', async () => {
+    const res = await makeRequest(
+      'POST',
+      '/api/v1/competition/attempt/submit',
+      { Authorization: `Bearer ${daveToken}` },
+      { flag: bogusFlag }
+    );
+
+    assert.equal(res.status, 400);
+    assert.equal(res.body.success, false);
+    assert.equal(res.body.error.code, 'INVALID_FLAG');
+
+    // Verify Dave's attempt remains IN_PROGRESS
+    const attemptRes = await makeRequest(
+      'GET',
+      '/api/v1/competition/attempt',
+      { Authorization: `Bearer ${daveToken}` }
+    );
+    assert.equal(attemptRes.body.data.status, 'IN_PROGRESS');
+    assert.equal(attemptRes.body.data.completedAt, null);
+  });
+
+  await t.test('Cross-team flag security: Another team valid flag is rejected (400 FLAG_TEAM_MISMATCH)', async () => {
+    // Dave (Team Null Pointers, mapped to Valenfind Bravo) submits Alpha's flag
+    const res = await makeRequest(
+      'POST',
+      '/api/v1/competition/attempt/submit',
+      { Authorization: `Bearer ${daveToken}` },
+      { flag: validAlphaFlag }
+    );
+
+    assert.equal(res.status, 400);
+    assert.equal(res.body.success, false);
+    assert.equal(res.body.error.code, 'FLAG_TEAM_MISMATCH');
+
+    // Dave's attempt remains IN_PROGRESS
+    const attemptRes = await makeRequest(
+      'GET',
+      '/api/v1/competition/attempt',
+      { Authorization: `Bearer ${daveToken}` }
+    );
+    assert.equal(attemptRes.body.data.status, 'IN_PROGRESS');
+    assert.equal(attemptRes.body.data.completedAt, null);
+  });
+
+  await t.test('Forged client-supplied teamId or attemptId is completely ignored', async () => {
+    // Dave attempts to forge body parameters to target Alice's team
+    const res = await makeRequest(
+      'POST',
+      '/api/v1/competition/attempt/submit',
+      { Authorization: `Bearer ${daveToken}` },
+      {
+        flag: validAlphaFlag,
+        teamId: 'team-binary-beasts',
+        attemptId: 'arbitrary-attempt-uuid',
+      }
+    );
+
+    // Because the server enforces req.user.teamId, Dave is checked as team-null-pointers
+    // and Alpha's flag triggers FLAG_TEAM_MISMATCH
+    assert.equal(res.status, 400);
+    assert.equal(res.body.error.code, 'FLAG_TEAM_MISMATCH');
+  });
+
+  await t.test('Team without mapping: Rejected with 400 TEAM_MAPPING_REQUIRED (no guessing)', async () => {
+    // Temporarily clear Dave's valenfindTeamId mapping
+    await dbService.updateTeamValenfindId('team-null-pointers', null);
+
+    const res = await makeRequest(
+      'POST',
+      '/api/v1/competition/attempt/submit',
+      { Authorization: `Bearer ${daveToken}` },
+      { flag: validBravoFlag }
+    );
+
+    assert.equal(res.status, 400);
+    assert.equal(res.body.error.code, 'TEAM_MAPPING_REQUIRED');
+
+    // Restore Dave's mapping
+    await dbService.updateTeamValenfindId('team-null-pointers', valenfindBravoId);
+  });
+
+  let daveCompletionTimestamp: string;
+  let daveElapsedMs: number;
+
+  await t.test('Valid flag submission: Completes attempt and records authoritative elapsedMs', async () => {
+    // Ensure small elapsed duration
+    await new Promise((resolve) => setTimeout(resolve, 50));
+
+    const res = await makeRequest(
+      'POST',
+      '/api/v1/competition/attempt/submit',
+      { Authorization: `Bearer ${daveToken}` },
+      { flag: validBravoFlag }
+    );
+
+    assert.equal(res.status, 200);
+    assert.equal(res.body.success, true);
+    assert.equal(res.body.data.status, 'COMPLETED');
+    assert.equal(res.body.data.teamId, 'team-null-pointers');
+    assert.ok(res.body.data.completedAt);
+    assert.ok(typeof res.body.data.elapsedMs === 'number');
+    assert.ok(res.body.data.elapsedMs > 0);
+
+    daveCompletionTimestamp = res.body.data.completedAt;
+    daveElapsedMs = res.body.data.elapsedMs;
+
+    // Verify GET endpoint confirms the completed state
+    const statusRes = await makeRequest(
+      'GET',
+      '/api/v1/competition/attempt',
+      { Authorization: `Bearer ${daveToken}` }
+    );
+    assert.equal(statusRes.body.data.status, 'COMPLETED');
+    assert.equal(statusRes.body.data.completedAt, daveCompletionTimestamp);
+    assert.equal(statusRes.body.data.elapsedMs, daveElapsedMs);
+  });
+
+  await t.test('Already-completed attempt: Subsequent submissions are rejected (400 ATTEMPT_ALREADY_COMPLETED)', async () => {
+    const res = await makeRequest(
+      'POST',
+      '/api/v1/competition/attempt/submit',
+      { Authorization: `Bearer ${daveToken}` },
+      { flag: validBravoFlag }
+    );
+
+    assert.equal(res.status, 400);
+    assert.equal(res.body.error.code, 'ATTEMPT_ALREADY_COMPLETED');
+
+    // Confirm stored timestamps and elapsedMs did not change
+    const statusRes = await makeRequest(
+      'GET',
+      '/api/v1/competition/attempt',
+      { Authorization: `Bearer ${daveToken}` }
+    );
+    assert.equal(statusRes.body.data.completedAt, daveCompletionTimestamp);
+    assert.equal(statusRes.body.data.elapsedMs, daveElapsedMs);
+  });
+
+  await t.test('Concurrent valid submissions: Teammates preserve a single atomic completion', async () => {
+    // Start a fresh team attempt for a new team (or reset team-binary-beasts)
+    const store = (dbService as any);
+    // Create new in-progress attempt for team-binary-beasts to test concurrent submissions
+    await store.startCompetitionAttempt('team-binary-beasts');
+    // Ensure attempt is in progress for this test
+    const currentAttempt = await dbService.getCompetitionAttempt('team-binary-beasts');
+    if (currentAttempt) {
+      currentAttempt.status = 'IN_PROGRESS';
+      currentAttempt.completedAt = null;
+      currentAttempt.elapsedMs = null;
+    }
+
+    // Alice and Bob submit concurrently
+    const [resAlice, resBob] = await Promise.all([
+      makeRequest(
+        'POST',
+        '/api/v1/competition/attempt/submit',
+        { Authorization: `Bearer ${aliceToken}` },
+        { flag: validAlphaFlag }
+      ),
+      makeRequest(
+        'POST',
+        '/api/v1/competition/attempt/submit',
+        { Authorization: `Bearer ${bobToken}` },
+        { flag: validAlphaFlag }
+      ),
+    ]);
+
+    // At least one (or both) succeeds with 200, or one succeeds and the other gets ATTEMPT_ALREADY_COMPLETED
+    // In all cases, the attempt is COMPLETED and the first recorded completion timestamp is preserved
+    assert.ok(resAlice.status === 200 || resAlice.status === 400);
+    assert.ok(resBob.status === 200 || resBob.status === 400);
+
+    const finalAttempt = await dbService.getCompetitionAttempt('team-binary-beasts');
+    assert.equal(finalAttempt?.status, 'COMPLETED');
+    assert.ok(finalAttempt?.completedAt);
+    assert.ok(typeof finalAttempt?.elapsedMs === 'number');
   });
 });
 

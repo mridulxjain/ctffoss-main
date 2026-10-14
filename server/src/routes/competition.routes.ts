@@ -11,5 +11,7 @@ router.get('/', competitionController.getStatus);
 router.post('/attempt', requireAuth, requireTeam, competitionController.startAttempt);
 router.post('/attempt/start', requireAuth, requireTeam, competitionController.startAttempt);
 router.get('/attempt', requireAuth, requireTeam, competitionController.getAttempt);
+router.post('/attempt/submit', requireAuth, requireTeam, competitionController.submitAttemptFlag);
+router.post('/submit', requireAuth, requireTeam, competitionController.submitAttemptFlag);
 
 export default router;

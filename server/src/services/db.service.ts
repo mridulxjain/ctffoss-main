@@ -30,6 +30,7 @@ export interface DBTeam {
   id: string;
   name: string;
   externalId?: string | null;
+  valenfindTeamId?: string | null;
   totalScore: number;
   lastSolveAt: Date | null;
   members: DBUser[];
@@ -294,6 +295,7 @@ class MemoryCTFStore {
       id: 'team-binary-beasts',
       name: 'Binary Beasts',
       externalId: 'ext-team-alpha',
+      valenfindTeamId: 'e4e8c7ee-8a3c-49f7-a23a-1fbf9d3e386a', // Mapped to Valenfind Team Alpha
       totalScore: 0,
       lastSolveAt: null,
       members: [userAlice, userBob],
@@ -304,6 +306,7 @@ class MemoryCTFStore {
       id: 'team-null-pointers',
       name: 'Null Pointers',
       externalId: 'ext-team-bravo',
+      valenfindTeamId: 'c9f758bf-077b-4516-89aa-a5b3778ef9e2', // Mapped to Valenfind Team Bravo
       totalScore: 0,
       lastSolveAt: null,
       members: [userDave],
@@ -444,6 +447,7 @@ export const dbService = {
         id: t.id,
         name: t.name,
         externalId: t.externalId,
+        valenfindTeamId: (t as any).valenfindTeamId ?? null,
         totalScore,
         lastSolveAt: t.lastSolveAt,
         solvesCount: publishedSolves.length,
@@ -502,6 +506,7 @@ export const dbService = {
       id: t.id,
       name: t.name,
       externalId: t.externalId,
+      valenfindTeamId: t.valenfindTeamId ?? null,
       totalScore,
       lastSolveAt: t.lastSolveAt,
       solvesCount: publishedSolves.length,
@@ -1973,6 +1978,25 @@ export const dbService = {
     attempt.updatedAt = now;
 
     return (await this.getCompetitionAttempt(teamId))!;
+  },
+
+  /**
+   * Sets or clears the mapped Valenfind team ID for a CTF team.
+   */
+  async updateTeamValenfindId(teamId: string, valenfindTeamId: string | null): Promise<void> {
+    const hasDb = await checkPrisma();
+    if (hasDb) {
+      await prisma.team.update({
+        where: { id: teamId },
+        data: { valenfindTeamId },
+      });
+      return;
+    }
+
+    const team = memoryStore.teams.get(teamId);
+    if (team) {
+      team.valenfindTeamId = valenfindTeamId;
+    }
   },
 };
 

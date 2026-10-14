@@ -18,6 +18,7 @@ export interface TeamDTO {
   id: string;
   name: string;
   externalId?: string | null;
+  valenfindTeamId?: string | null;
   totalScore: number;
   members: TeamMemberDTO[];
   solvesCount: number;
