@@ -3,7 +3,7 @@ import { api } from '../lib/api';
 import type { CategoryDTO, ChallengeListItemDTO } from '@fossctf/shared';
 import { useAuth } from '../context/AuthContext';
 import { ChallengeModal } from '../components/challenges/ChallengeModal';
-import { Flag, Search, Trophy, CheckCircle2, Filter, Sparkles, Layers } from 'lucide-react';
+import { Search, CheckCircle2, Circle } from 'lucide-react';
 
 export const ChallengesPage: React.FC = () => {
   const { team, refreshSession } = useAuth();
@@ -37,7 +37,6 @@ export const ChallengesPage: React.FC = () => {
     refreshSession();
   };
 
-  // Filter challenges
   const filtered = challenges.filter((c) => {
     const matchesCat = selectedCategory === 'ALL' || c.categoryId === selectedCategory;
     const matchesDiff = selectedDifficulty === 'ALL' || c.difficulty === selectedDifficulty;
@@ -48,75 +47,56 @@ export const ChallengesPage: React.FC = () => {
     return matchesCat && matchesDiff && matchesSearch;
   });
 
-  const totalPoints = challenges.reduce((sum, c) => sum + c.points, 0);
   const solvedCount = challenges.filter((c) => c.isSolvedByTeam).length;
-  const progressPercent = challenges.length > 0 ? Math.round((solvedCount / challenges.length) * 100) : 0;
 
-  const difficultyColors = {
-    EASY: 'border-emerald-500/30 text-emerald-400 bg-emerald-500/10',
-    MEDIUM: 'border-amber-500/30 text-amber-400 bg-amber-500/10',
-    HARD: 'border-rose-500/30 text-rose-400 bg-rose-500/10',
-    INSANE: 'border-purple-500/30 text-purple-400 bg-purple-500/10',
+  const difficultyBadge = (diff: string) => {
+    switch (diff) {
+      case 'EASY':
+        return 'text-emerald-400 bg-emerald-950/40 border-emerald-900/40';
+      case 'MEDIUM':
+        return 'text-amber-400 bg-amber-950/40 border-amber-900/40';
+      case 'HARD':
+        return 'text-rose-400 bg-rose-950/40 border-rose-900/40';
+      case 'INSANE':
+        return 'text-purple-400 bg-purple-950/40 border-purple-900/40';
+      default:
+        return 'text-zinc-400 bg-zinc-900 border-zinc-800';
+    }
   };
 
   return (
-    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8 animate-in fade-in duration-300">
-      {/* Hero / Header stats */}
-      <div className="glass-panel p-6 sm:p-8 rounded-2xl relative overflow-hidden bg-gradient-to-r from-slate-900 via-[#0d1527] to-slate-900 border border-slate-800">
-        <div className="absolute top-0 right-0 -mr-16 -mt-16 w-64 h-64 bg-emerald-500/10 rounded-full blur-3xl pointer-events-none"></div>
-
-        <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-6 relative z-10">
-          <div>
-            <div className="flex items-center gap-2 text-emerald-400 text-xs font-mono font-semibold uppercase tracking-wider mb-2">
-              <Sparkles className="w-4 h-4" />
-              Capture The Flag Challenges
-            </div>
-            <h1 className="text-3xl font-extrabold text-white tracking-tight">
-              Operational Challenges
-            </h1>
-            <p className="text-slate-400 text-sm mt-1 max-w-xl">
-              Solve security puzzles across Web Exploitation, Cryptography, Reverse Engineering, and
-              Forensics. Submit flags to capture points for your team.
-            </p>
-          </div>
-
-          {/* Team Progress Tracker */}
-          {team && (
-            <div className="w-full md:w-72 bg-slate-950/60 p-4 rounded-xl border border-slate-800/80">
-              <div className="flex items-center justify-between text-xs mb-1.5">
-                <span className="text-slate-400">Team Progress:</span>
-                <span className="font-mono font-bold text-emerald-400">
-                  {solvedCount} / {challenges.length} solved ({progressPercent}%)
-                </span>
-              </div>
-              <div className="w-full h-2 rounded-full bg-slate-800 overflow-hidden">
-                <div
-                  className="h-full bg-emerald-500 rounded-full transition-all duration-500 shadow-glow"
-                  style={{ width: `${progressPercent}%` }}
-                ></div>
-              </div>
-              <div className="flex justify-between items-center text-[11px] text-slate-400 mt-2 font-mono">
-                <span>Team Score:</span>
-                <span className="text-white font-bold">{team.totalScore} pts</span>
-              </div>
-            </div>
-          )}
+    <div className="max-w-6xl mx-auto px-4 sm:px-6 py-8 space-y-6">
+      {/* Page Header */}
+      <div className="flex flex-col sm:flex-row sm:items-baseline justify-between gap-2 border-b border-zinc-800 pb-5">
+        <div>
+          <h1 className="text-xl font-semibold tracking-tight text-zinc-100">
+            Challenges
+          </h1>
+          <p className="text-xs text-zinc-400 mt-0.5">
+            Browse competition tasks, extract flags, and submit solutions to score points for your team.
+          </p>
         </div>
+
+        {team && challenges.length > 0 && (
+          <div className="text-xs text-zinc-400 font-mono">
+            Progress: <span className="text-zinc-200 font-semibold">{solvedCount}</span> of{' '}
+            <span className="text-zinc-200">{challenges.length}</span> solved
+          </div>
+        )}
       </div>
 
       {/* Filter & Search Bar */}
-      <div className="space-y-4">
+      <div className="space-y-3">
         {/* Category Pills */}
-        <div className="flex items-center gap-2 overflow-x-auto pb-2 scrollbar-none">
+        <div className="flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-none">
           <button
             onClick={() => setSelectedCategory('ALL')}
-            className={`px-3.5 py-1.5 rounded-xl text-xs font-medium whitespace-nowrap transition flex items-center gap-1.5 ${
+            className={`px-3 py-1 rounded-md text-xs transition-colors whitespace-nowrap ${
               selectedCategory === 'ALL'
-                ? 'bg-emerald-500 text-black font-bold shadow-glow'
-                : 'bg-slate-900 text-slate-300 hover:bg-slate-800 border border-slate-800'
+                ? 'bg-zinc-800 text-zinc-100 font-medium border border-zinc-700'
+                : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-900 border border-transparent'
             }`}
           >
-            <Layers className="w-3.5 h-3.5" />
             All Categories ({challenges.length})
           </button>
 
@@ -127,10 +107,10 @@ export const ChallengesPage: React.FC = () => {
               <button
                 key={cat.id}
                 onClick={() => setSelectedCategory(cat.id)}
-                className={`px-3.5 py-1.5 rounded-xl text-xs font-medium whitespace-nowrap transition flex items-center gap-1.5 ${
+                className={`px-3 py-1 rounded-md text-xs transition-colors whitespace-nowrap ${
                   isSelected
-                    ? 'bg-emerald-500 text-black font-bold shadow-glow'
-                    : 'bg-slate-900 text-slate-300 hover:bg-slate-800 border border-slate-800'
+                    ? 'bg-zinc-800 text-zinc-100 font-medium border border-zinc-700'
+                    : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-900 border border-transparent'
                 }`}
               >
                 {cat.name} ({count})
@@ -140,27 +120,26 @@ export const ChallengesPage: React.FC = () => {
         </div>
 
         {/* Secondary filters (Search & Difficulty) */}
-        <div className="flex flex-col sm:flex-row items-center justify-between gap-3">
-          <div className="relative w-full sm:w-80">
-            <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+        <div className="flex flex-col sm:flex-row items-center justify-between gap-2.5">
+          <div className="relative w-full sm:w-72">
+            <Search className="w-3.5 h-3.5 text-zinc-500 absolute left-3 top-1/2 -translate-y-1/2" />
             <input
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Search challenges by title or keyword..."
-              className="w-full pl-9 pr-4 py-2 rounded-xl bg-slate-900 border border-slate-800 text-xs text-white placeholder-slate-400 focus:outline-none focus:border-emerald-500 transition"
+              placeholder="Filter by challenge name..."
+              className="w-full pl-8 pr-3 py-1.5 rounded-md bg-zinc-900/70 border border-zinc-800 text-xs text-zinc-200 placeholder-zinc-500 focus:outline-none focus:border-zinc-700 transition-colors"
             />
           </div>
 
           <div className="flex items-center gap-2 w-full sm:w-auto justify-end">
-            <Filter className="w-3.5 h-3.5 text-slate-400" />
-            <span className="text-xs text-slate-400">Difficulty:</span>
+            <span className="text-xs text-zinc-500">Difficulty:</span>
             <select
               value={selectedDifficulty}
               onChange={(e) => setSelectedDifficulty(e.target.value)}
-              className="bg-slate-900 border border-slate-800 text-xs text-slate-200 rounded-xl px-3 py-2 focus:outline-none focus:border-emerald-500"
+              className="bg-zinc-900 border border-zinc-800 text-xs text-zinc-300 rounded-md px-2.5 py-1.5 focus:outline-none focus:border-zinc-700 cursor-pointer"
             >
-              <option value="ALL">All Difficulties</option>
+              <option value="ALL">All</option>
               <option value="EASY">Easy</option>
               <option value="MEDIUM">Medium</option>
               <option value="HARD">Hard</option>
@@ -170,69 +149,72 @@ export const ChallengesPage: React.FC = () => {
         </div>
       </div>
 
-      {/* Challenge Card Grid */}
+      {/* Challenge List / Table */}
       {loading ? (
-        <div className="py-20 text-center text-slate-400 font-mono text-sm">
-          Loading CTF challenge grid...
+        <div className="py-16 text-center text-xs font-mono text-zinc-500">
+          Loading challenges...
         </div>
       ) : filtered.length === 0 ? (
-        <div className="glass-panel p-12 text-center rounded-2xl border border-slate-800">
-          <Flag className="w-10 h-10 text-slate-400 mx-auto mb-3" />
-          <h3 className="text-base font-bold text-white">No challenges match your criteria</h3>
-          <p className="text-xs text-slate-400 mt-1">Try resetting your filters or search query.</p>
+        <div className="rounded-lg border border-zinc-800 bg-zinc-900/20 p-12 text-center">
+          <p className="text-sm font-medium text-zinc-300">No challenges found</p>
+          <p className="text-xs text-zinc-500 mt-1">
+            {challenges.length === 0
+              ? 'No competition challenges are currently published. Check back when the round begins.'
+              : 'No challenges matched your filter criteria.'}
+          </p>
         </div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+        <div className="rounded-lg border border-zinc-800 bg-zinc-900/30 overflow-hidden divide-y divide-zinc-800/80">
           {filtered.map((chal) => (
             <div
               key={chal.id}
               onClick={() => setActiveModalId(chal.id)}
-              className={`glass-card p-5 rounded-2xl cursor-pointer relative group flex flex-col justify-between ${
-                chal.isSolvedByTeam
-                  ? 'border-emerald-500/40 bg-emerald-950/10'
-                  : 'hover:border-emerald-500/40'
-              }`}
+              className="px-4 py-3 sm:px-5 sm:py-3.5 flex items-center justify-between gap-4 hover:bg-zinc-900/80 cursor-pointer transition-colors group"
             >
-              <div>
-                {/* Card Header */}
-                <div className="flex items-start justify-between gap-2 mb-3">
-                  <span className="text-[11px] font-mono font-medium text-slate-400 uppercase tracking-wide">
-                    {chal.categoryName}
-                  </span>
-                  <span
-                    className={`text-[10px] font-mono font-bold px-2 py-0.5 rounded border ${
-                      difficultyColors[chal.difficulty]
-                    }`}
-                  >
-                    {chal.difficulty}
-                  </span>
+              {/* Left: Status icon & Title + Category */}
+              <div className="flex items-center gap-3.5 min-w-0">
+                <div className="shrink-0">
+                  {chal.isSolvedByTeam ? (
+                    <CheckCircle2 className="w-4 h-4 text-emerald-500" title="Solved by team" />
+                  ) : (
+                    <Circle className="w-4 h-4 text-zinc-600" title="Unsolved" />
+                  )}
                 </div>
 
-                {/* Challenge Title */}
-                <h3 className="text-base font-bold text-white group-hover:text-emerald-400 transition mb-2">
-                  {chal.title}
-                </h3>
+                <div className="min-w-0">
+                  <div className="flex items-center gap-2">
+                    <span className="font-medium text-sm text-zinc-200 group-hover:text-emerald-400 transition-colors truncate">
+                      {chal.title}
+                    </span>
+                  </div>
+                  <div className="text-xs text-zinc-500 flex items-center gap-2 mt-0.5">
+                    <span>{chal.categoryName}</span>
+                    {chal.author && (
+                      <>
+                        <span className="text-zinc-700">&middot;</span>
+                        <span>by {chal.author}</span>
+                      </>
+                    )}
+                  </div>
+                </div>
               </div>
 
-              {/* Card Footer */}
-              <div className="pt-4 border-t border-slate-800/80 flex items-center justify-between mt-4">
-                <div className="flex items-center gap-1.5 text-xs text-slate-400">
-                  <Trophy className="w-3.5 h-3.5 text-amber-400" />
-                  <span>
-                    {chal.solveCount} {chal.solveCount === 1 ? 'solve' : 'solves'}
-                  </span>
+              {/* Right: Difficulty, Solves & Points */}
+              <div className="flex items-center gap-3 sm:gap-4 shrink-0">
+                <span
+                  className={`text-[11px] font-mono font-medium px-2 py-0.5 rounded border ${difficultyBadge(
+                    chal.difficulty
+                  )}`}
+                >
+                  {chal.difficulty}
+                </span>
+
+                <div className="text-xs text-zinc-500 font-mono hidden sm:block w-20 text-right">
+                  {chal.solveCount} {chal.solveCount === 1 ? 'solve' : 'solves'}
                 </div>
 
-                <div className="flex items-center gap-2">
-                  {chal.isSolvedByTeam && (
-                    <span className="text-[11px] font-mono text-emerald-400 flex items-center gap-1 font-semibold">
-                      <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
-                      Solved
-                    </span>
-                  )}
-                  <span className="text-sm font-mono font-bold text-emerald-400 px-2 py-0.5 rounded bg-emerald-500/10 border border-emerald-500/20">
-                    {chal.points} pts
-                  </span>
+                <div className="font-mono text-sm font-semibold text-zinc-200 w-20 text-right">
+                  {chal.points} <span className="text-[11px] font-normal text-zinc-500">pts</span>
                 </div>
               </div>
             </div>

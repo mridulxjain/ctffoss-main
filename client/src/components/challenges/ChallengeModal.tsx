@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { X, Trophy, AlertCircle, CheckCircle2, Flame, HelpCircle, Lock, Unlock, Send } from 'lucide-react';
+import { X, CheckCircle2, AlertCircle, Lock, Unlock } from 'lucide-react';
 import { api } from '../../lib/api';
 import type { ChallengeDetailDTO, HintDTO } from '@fossctf/shared';
 import { useAuth } from '../../context/AuthContext';
@@ -43,6 +43,22 @@ export const ChallengeModal: React.FC<ChallengeModalProps> = ({
     fetchChallenge();
   }, [challengeId]);
 
+  // Handle ESC key to close modal & lock body scroll
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        onClose();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    document.body.style.overflow = 'hidden';
+
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+      document.body.style.overflow = 'unset';
+    };
+  }, [onClose]);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!flag.trim()) return;
@@ -50,7 +66,7 @@ export const ChallengeModal: React.FC<ChallengeModalProps> = ({
     if (!team) {
       setFeedback({
         type: 'error',
-        message: 'You must join or create a team before submitting flags!',
+        message: 'You must join or create a team before submitting flags.',
       });
       return;
     }
@@ -63,23 +79,24 @@ export const ChallengeModal: React.FC<ChallengeModalProps> = ({
       if (res.isCorrect) {
         setFeedback({
           type: 'success',
-          message: res.message,
+          message: res.isFirstBlood
+            ? 'Correct flag verified. First Blood recorded for your team!'
+            : 'Correct flag verified. Points awarded to your team.',
           isFirstBlood: res.isFirstBlood,
         });
         setFlag('');
         onSolved();
-        // Refresh challenge state to mark as solved
         fetchChallenge();
       } else {
         setFeedback({
           type: 'error',
-          message: res.message || 'Incorrect flag. Please try again.',
+          message: res.message || 'Incorrect flag. Please check formatting and try again.',
         });
       }
     } catch (err: any) {
       setFeedback({
         type: 'error',
-        message: err.message || 'Submission failed. Please try again.',
+        message: err.message || 'Submission error. Please try again.',
       });
     } finally {
       setSubmitting(false);
@@ -88,7 +105,7 @@ export const ChallengeModal: React.FC<ChallengeModalProps> = ({
 
   const handleUnlockHint = async (hint: HintDTO) => {
     if (!team) {
-      alert('You must be in a team to unlock hints.');
+      alert('You must be a member of a team to unlock hints.');
       return;
     }
 
@@ -105,7 +122,7 @@ export const ChallengeModal: React.FC<ChallengeModalProps> = ({
     try {
       await api.post(`/challenges/${challengeId}/hints/${hint.id}/unlock`);
       await fetchChallenge();
-      onSolved(); // Refresh team score
+      onSolved();
     } catch (err: any) {
       alert(err.message || 'Failed to unlock hint');
     } finally {
@@ -113,199 +130,183 @@ export const ChallengeModal: React.FC<ChallengeModalProps> = ({
     }
   };
 
-  if (loading || !challenge) {
-    return (
-      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
-        <div className="glass-panel p-8 rounded-2xl border border-slate-700 text-slate-300">
-          Loading challenge data...
-        </div>
-      </div>
-    );
-  }
-
-  const difficultyColors = {
-    EASY: 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30',
-    MEDIUM: 'bg-amber-500/10 text-amber-400 border-amber-500/30',
-    HARD: 'bg-rose-500/10 text-rose-400 border-rose-500/30',
-    INSANE: 'bg-purple-500/10 text-purple-400 border-purple-500/30',
+  const difficultyBadge = (diff: string) => {
+    switch (diff) {
+      case 'EASY':
+        return 'text-emerald-400 bg-emerald-950/40 border-emerald-900/40';
+      case 'MEDIUM':
+        return 'text-amber-400 bg-amber-950/40 border-amber-900/40';
+      case 'HARD':
+        return 'text-rose-400 bg-rose-950/40 border-rose-900/40';
+      case 'INSANE':
+        return 'text-purple-400 bg-purple-950/40 border-purple-900/40';
+      default:
+        return 'text-zinc-400 bg-zinc-900 border-zinc-800';
+    }
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-md p-4 animate-in fade-in duration-200">
-      <div className="relative w-full max-w-2xl bg-[#0b1120] border border-slate-700/80 rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4"
+      onClick={(e) => {
+        if (e.target === e.currentTarget) onClose();
+      }}
+    >
+      <div className="relative w-full max-w-lg rounded-lg border border-zinc-800 bg-zinc-950 shadow-2xl flex flex-col max-h-[90vh]">
         {/* Header */}
-        <div className="px-6 py-5 border-b border-slate-800 flex items-start justify-between bg-slate-900/50">
+        <div className="px-5 py-4 border-b border-zinc-800 flex items-start justify-between">
           <div>
-            <div className="flex items-center gap-2 mb-2">
-              <span className="text-xs font-mono font-medium text-slate-400">
-                {challenge.categoryName}
-              </span>
-              <span
-                className={`text-[11px] font-mono font-bold px-2 py-0.5 rounded border ${
-                  difficultyColors[challenge.difficulty]
-                }`}
-              >
-                {challenge.difficulty}
-              </span>
-              {challenge.isSolvedByTeam && (
-                <span className="text-[11px] font-mono font-bold px-2 py-0.5 rounded bg-emerald-500 text-black flex items-center gap-1">
-                  <CheckCircle2 className="w-3 h-3" /> Solved
+            <div className="flex items-center gap-2 mb-1.5">
+              <span className="text-xs text-zinc-400">{challenge?.categoryName || 'Challenge'}</span>
+              {challenge && (
+                <span
+                  className={`text-[10px] font-mono px-1.5 py-0.5 rounded border ${difficultyBadge(
+                    challenge.difficulty
+                  )}`}
+                >
+                  {challenge.difficulty}
                 </span>
               )}
             </div>
-            <h2 className="text-xl font-bold text-white tracking-tight">{challenge.title}</h2>
+            <h2 className="text-base font-semibold text-zinc-100">
+              {challenge ? challenge.title : 'Loading challenge...'}
+            </h2>
           </div>
 
-          <div className="flex items-center gap-4">
-            <div className="text-right">
-              <div className="text-xl font-mono font-bold text-emerald-400">
-                {challenge.points} pts
+          <div className="flex items-center gap-3">
+            {challenge && (
+              <div className="font-mono text-sm font-semibold text-zinc-100">
+                {challenge.points} <span className="text-xs text-zinc-500 font-normal">pts</span>
               </div>
-              <div className="text-[11px] text-slate-400 flex items-center gap-1 justify-end">
-                <Trophy className="w-3 h-3 text-amber-400" />
-                {challenge.solveCount} {challenge.solveCount === 1 ? 'solve' : 'solves'}
-              </div>
-            </div>
-
+            )}
             <button
               onClick={onClose}
-              className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition"
+              className="p-1 rounded text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800 transition-colors"
+              aria-label="Close modal"
             >
-              <X className="w-5 h-5" />
+              <X className="w-4 h-4" />
             </button>
           </div>
         </div>
 
         {/* Content Body */}
-        <div className="p-6 overflow-y-auto space-y-6">
-          {/* Description */}
-          <div className="text-slate-300 text-sm leading-relaxed whitespace-pre-wrap bg-slate-900/40 p-4 rounded-xl border border-slate-800/80 font-sans">
-            {challenge.description}
-          </div>
-
-          {/* Author note */}
-          {challenge.author && (
-            <div className="text-xs text-slate-400 font-mono">
-              Challenge Author: <span className="text-slate-300">@{challenge.author}</span>
+        <div className="p-5 overflow-y-auto space-y-5 text-sm">
+          {loading || !challenge ? (
+            <div className="py-8 text-center text-xs font-mono text-zinc-500">
+              Loading challenge data...
             </div>
-          )}
+          ) : (
+            <>
+              {/* Solved Status Banner */}
+              {challenge.isSolvedByTeam && (
+                <div className="p-3 rounded-md bg-emerald-950/30 border border-emerald-900/50 flex items-center gap-2.5 text-xs text-emerald-400">
+                  <CheckCircle2 className="w-4 h-4 shrink-0 text-emerald-500" />
+                  <span>This challenge has already been solved by your team.</span>
+                </div>
+              )}
 
-          {/* Hints Section */}
-          {challenge.hints && challenge.hints.length > 0 && (
-            <div className="space-y-3">
-              <h3 className="text-xs font-semibold uppercase tracking-wider text-slate-400 flex items-center gap-1.5">
-                <HelpCircle className="w-4 h-4 text-cyan-400" />
-                Hints Available
-              </h3>
-
-              <div className="space-y-2">
-                {challenge.hints.map((hint, idx) => (
-                  <div
-                    key={hint.id}
-                    className="p-3 rounded-xl border border-slate-800 bg-slate-900/60 text-xs"
-                  >
-                    {hint.isUnlocked ? (
-                      <div className="space-y-1">
-                        <div className="flex items-center justify-between text-cyan-400 font-semibold font-mono text-[11px]">
-                          <span className="flex items-center gap-1">
-                            <Unlock className="w-3 h-3" /> Hint #{idx + 1}
-                          </span>
-                          {hint.cost > 0 && <span>(-{hint.cost} pts)</span>}
-                        </div>
-                        <p className="text-slate-200 mt-1">{hint.content}</p>
-                      </div>
-                    ) : (
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-2 text-slate-400">
-                          <Lock className="w-3.5 h-3.5" />
-                          <span>Hint #{idx + 1}</span>
-                          <span className="text-slate-400 font-mono">
-                            {hint.cost === 0 ? '(Free)' : `(Cost: ${hint.cost} pts)`}
-                          </span>
-                        </div>
-
-                        <button
-                          onClick={() => handleUnlockHint(hint)}
-                          disabled={unlockingHintId === hint.id}
-                          className="px-2.5 py-1 rounded bg-slate-800 hover:bg-slate-700 text-cyan-300 font-medium transition text-xs flex items-center gap-1"
-                        >
-                          <Unlock className="w-3 h-3" />
-                          {unlockingHintId === hint.id ? 'Unlocking...' : 'Unlock Hint'}
-                        </button>
-                      </div>
-                    )}
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* Flag Submission Area */}
-          <div className="pt-2">
-            <h3 className="text-xs font-semibold uppercase tracking-wider text-slate-400 mb-2.5 flex items-center gap-1.5">
-              <Flame className="w-4 h-4 text-emerald-400" />
-              Flag Submission
-            </h3>
-
-            {challenge.isSolvedByTeam ? (
-              <div className="p-4 rounded-xl bg-emerald-950/30 border border-emerald-500/30 flex items-center gap-3 text-emerald-300 text-sm">
-                <CheckCircle2 className="w-5 h-5 text-emerald-400 shrink-0" />
-                <div>
-                  <div className="font-semibold">Challenge already solved by your team!</div>
-                  <div className="text-xs text-emerald-400/80">
-                    Points have been credited to your team on the scoreboard.
-                  </div>
+              {/* Description */}
+              <div className="space-y-1.5">
+                <span className="text-xs font-medium text-zinc-400 uppercase tracking-wider">
+                  Description
+                </span>
+                <div className="text-zinc-300 text-xs sm:text-sm leading-relaxed whitespace-pre-wrap rounded-md bg-zinc-900/60 border border-zinc-800/80 p-3.5 font-sans">
+                  {challenge.description}
                 </div>
               </div>
-            ) : (
-              <form onSubmit={handleSubmit} className="space-y-3">
-                <div className="flex gap-2">
-                  <input
-                    type="text"
-                    value={flag}
-                    onChange={(e) => setFlag(e.target.value)}
-                    placeholder="FOSSCTF{your_flag_here}"
-                    className="flex-1 px-4 py-2.5 rounded-xl bg-slate-900 border border-slate-700 text-white placeholder-slate-400 font-mono text-sm focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 transition"
-                  />
-                  <button
-                    type="submit"
-                    disabled={submitting || !flag.trim()}
-                    className="px-5 py-2.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 disabled:opacity-50 text-black font-bold text-sm tracking-wide transition flex items-center gap-2 shadow-glow"
-                  >
-                    <Send className="w-4 h-4" />
-                    {submitting ? 'Verifying...' : 'Submit'}
-                  </button>
-                </div>
 
-                {/* Feedback message */}
-                {feedback && (
-                  <div
-                    className={`p-3.5 rounded-xl text-sm flex items-start gap-2.5 animate-in slide-in-from-top-1 ${
-                      feedback.type === 'success'
-                        ? feedback.isFirstBlood
-                          ? 'bg-amber-950/40 border border-amber-500/40 text-amber-300'
-                          : 'bg-emerald-950/40 border border-emerald-500/40 text-emerald-300'
-                        : 'bg-red-950/40 border border-red-500/40 text-red-300'
-                    }`}
-                  >
-                    {feedback.type === 'success' ? (
-                      <CheckCircle2 className="w-5 h-5 shrink-0 text-emerald-400" />
-                    ) : (
-                      <AlertCircle className="w-5 h-5 shrink-0 text-red-400" />
-                    )}
-                    <div>
-                      <div className="font-semibold">{feedback.message}</div>
-                      {feedback.isFirstBlood && (
-                        <div className="text-xs text-amber-400 font-mono mt-0.5">
-                          🏆 You captured the FIRST BLOOD on this challenge!
+              {/* Hints */}
+              {challenge.hints && challenge.hints.length > 0 && (
+                <div className="space-y-2">
+                  <span className="text-xs font-medium text-zinc-400 uppercase tracking-wider">
+                    Hints
+                  </span>
+                  <div className="space-y-1.5">
+                    {challenge.hints.map((hint, idx) => (
+                      <div
+                        key={hint.id}
+                        className="p-3 rounded-md border border-zinc-800 bg-zinc-900/40 text-xs space-y-1"
+                      >
+                        <div className="flex items-center justify-between text-zinc-400">
+                          <span className="flex items-center gap-1.5 font-medium">
+                            {hint.isUnlocked ? (
+                              <Unlock className="w-3.5 h-3.5 text-zinc-400" />
+                            ) : (
+                              <Lock className="w-3.5 h-3.5 text-zinc-500" />
+                            )}
+                            Hint #{idx + 1}
+                          </span>
+                          {!hint.isUnlocked && (
+                            <button
+                              onClick={() => handleUnlockHint(hint)}
+                              disabled={unlockingHintId === hint.id}
+                              className="px-2 py-0.5 rounded bg-zinc-800 hover:bg-zinc-700 text-zinc-200 transition-colors"
+                            >
+                              {unlockingHintId === hint.id
+                                ? 'Unlocking...'
+                                : hint.cost === 0
+                                ? 'View'
+                                : `Unlock (-${hint.cost} pts)`}
+                            </button>
+                          )}
                         </div>
-                      )}
+                        {hint.isUnlocked && (
+                          <p className="text-zinc-200 pt-1 border-t border-zinc-800/60">
+                            {hint.content}
+                          </p>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Flag Submission Form */}
+              {!challenge.isSolvedByTeam && (
+                <div className="space-y-2 pt-1 border-t border-zinc-800">
+                  <span className="text-xs font-medium text-zinc-400 uppercase tracking-wider">
+                    Submit Flag
+                  </span>
+                  <form onSubmit={handleSubmit} className="space-y-2.5">
+                    <div className="flex gap-2">
+                      <input
+                        type="text"
+                        value={flag}
+                        onChange={(e) => setFlag(e.target.value)}
+                        placeholder="FOSSCTF{...}"
+                        className="flex-1 px-3 py-1.5 rounded-md bg-zinc-900 border border-zinc-800 text-zinc-100 placeholder-zinc-500 font-mono text-xs focus:outline-none focus:border-zinc-600 transition-colors"
+                      />
+                      <button
+                        type="submit"
+                        disabled={submitting || !flag.trim()}
+                        className="px-4 py-1.5 rounded-md bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white font-medium text-xs transition-colors shrink-0"
+                      >
+                        {submitting ? 'Checking...' : 'Submit'}
+                      </button>
                     </div>
-                  </div>
-                )}
-              </form>
-            )}
-          </div>
+
+                    {/* Submission Feedback */}
+                    {feedback && (
+                      <div
+                        className={`p-2.5 rounded-md text-xs flex items-start gap-2 ${
+                          feedback.type === 'success'
+                            ? 'bg-emerald-950/40 border border-emerald-900/60 text-emerald-300'
+                            : 'bg-rose-950/40 border border-rose-900/60 text-rose-300'
+                        }`}
+                      >
+                        {feedback.type === 'success' ? (
+                          <CheckCircle2 className="w-4 h-4 shrink-0 text-emerald-400 mt-0.5" />
+                        ) : (
+                          <AlertCircle className="w-4 h-4 shrink-0 text-rose-400 mt-0.5" />
+                        )}
+                        <span>{feedback.message}</span>
+                      </div>
+                    )}
+                  </form>
+                </div>
+              )}
+            </>
+          )}
         </div>
       </div>
     </div>

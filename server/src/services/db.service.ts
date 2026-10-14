@@ -112,110 +112,35 @@ class MemoryCTFStore {
 
     this.categories = [catMisc, catWeb, catCrypto, catRev, catForensics];
 
-    // Seed Challenges
+    // Minimal development verification challenge to validate end-to-end scoring in sandbox mode.
+    // In production, real competition challenges are authored and published by event administrators.
     this.challenges = [
       {
-        id: 'chal-welcome-1',
-        slug: 'welcome-to-foss-ctf',
-        title: 'Welcome to FOSS CTF',
+        id: 'chal-dev-sample-1',
+        slug: 'development-verification-challenge',
+        title: 'Development Verification Challenge',
         description:
-          'Welcome to the competition platform! To test your submission flow, submit the following flag:\n\n`FOSSCTF{welcome_to_foss_ctf_2026}`',
+          'This is a development-only practice challenge to test the platform submission and scoring engine. In an active competition, real challenge briefs will be published here by contest coordinators.',
         categoryId: catMisc.id,
         difficulty: 'EASY',
-        points: 50,
+        points: 100,
         isPublished: true,
-        author: 'FOSS Club Admin',
+        author: 'FOSS Platform Team',
         sortOrder: 1,
-        flagHash: hashFlag('FOSSCTF{welcome_to_foss_ctf_2026}'),
+        flagHash: hashFlag('FOSSCTF{dev_verification_flag_2026}'),
         hints: [
           {
-            id: 'hint-welcome-1',
-            challengeId: 'chal-welcome-1',
-            content: 'Copy and paste the flag exactly as shown, including the FOSSCTF{} wrapper.',
+            id: 'hint-dev-1',
+            challengeId: 'chal-dev-sample-1',
+            content: 'The development verification flag is: FOSSCTF{dev_verification_flag_2026}',
             cost: 0,
             sortOrder: 1,
           },
         ],
       },
-      {
-        id: 'chal-web-1',
-        slug: 'inspect-the-vault',
-        title: 'Inspect the Vault',
-        description:
-          'A novice developer built a secret vault on the client side thinking nobody would ever press `F12`. Can you find the secret passcode?\n\nFlag: `FOSSCTF{client_side_secrets_are_never_safe}`',
-        categoryId: catWeb.id,
-        difficulty: 'EASY',
-        points: 100,
-        isPublished: true,
-        author: 'cyber_witch',
-        sortOrder: 2,
-        flagHash: hashFlag('FOSSCTF{client_side_secrets_are_never_safe}'),
-        hints: [
-          {
-            id: 'hint-web-1',
-            challengeId: 'chal-web-1',
-            content: 'Always check source files, script comments, and bundle chunks.',
-            cost: 10,
-            sortOrder: 1,
-          },
-        ],
-      },
-      {
-        id: 'chal-crypto-1',
-        slug: 'caesars-rotation',
-        title: "Caesar's Rotation",
-        description:
-          'Julius Caesar loved shifting alphabets by 13 positions. Decode this ciphertext:\n\n`SBFFPGS{pynffvp_rot13_vf_abg_rapelcgvba}`',
-        categoryId: catCrypto.id,
-        difficulty: 'EASY',
-        points: 100,
-        isPublished: true,
-        author: 'cryptoknight',
-        sortOrder: 3,
-        flagHash: hashFlag('FOSSCTF{classic_rot13_is_not_encryption}'),
-        hints: [
-          {
-            id: 'hint-crypto-1',
-            challengeId: 'chal-crypto-1',
-            content: 'ROT13 is a simple substitution cipher where each letter shifts by 13.',
-            cost: 15,
-            sortOrder: 1,
-          },
-        ],
-      },
-      {
-        id: 'chal-rev-1',
-        slug: 'byte-inspector',
-        title: 'Byte Inspector',
-        description:
-          'Reverse engineering begins with understanding condition checks and data structures. Find the key that satisfies `hash(k) == target`.\n\nFlag: `FOSSCTF{decompiled_and_conquered}`',
-        categoryId: catRev.id,
-        difficulty: 'MEDIUM',
-        points: 200,
-        isPublished: true,
-        author: 'hex_byte',
-        sortOrder: 4,
-        flagHash: hashFlag('FOSSCTF{decompiled_and_conquered}'),
-        hints: [],
-      },
-      {
-        id: 'chal-forensics-1',
-        slug: 'hidden-artifact',
-        title: 'Hidden Artifact',
-        description:
-          'Metadata embedded in image files often reveals hidden clues. Extract the hidden flag string:\n\nFlag: `FOSSCTF{exif_metadata_reveals_all}`',
-        categoryId: catForensics.id,
-        difficulty: 'MEDIUM',
-        points: 250,
-        isPublished: true,
-        author: 'detective_0x',
-        sortOrder: 5,
-        flagHash: hashFlag('FOSSCTF{exif_metadata_reveals_all}'),
-        hints: [],
-      },
     ];
 
-    // Seed mock teams & users for rich dev exploration
+    // Development user personas for local testing
     const adminUser: DBUser = {
       id: 'usr-admin-01',
       email: 'admin@fossclub.tech',
@@ -261,8 +186,8 @@ class MemoryCTFStore {
       id: 'team-binary-beasts',
       name: 'Binary Beasts',
       inviteCode: 'BEASTS2026',
-      totalScore: 150,
-      lastSolveAt: new Date(Date.now() - 3600000),
+      totalScore: 0,
+      lastSolveAt: null,
       members: [userAlice, userBob],
       createdAt: new Date(Date.now() - 86400000),
     };
@@ -271,8 +196,8 @@ class MemoryCTFStore {
       id: 'team-null-pointers',
       name: 'Null Pointers',
       inviteCode: 'NULLPTR101',
-      totalScore: 50,
-      lastSolveAt: new Date(Date.now() - 7200000),
+      totalScore: 0,
+      lastSolveAt: null,
       members: [userCharlie],
       createdAt: new Date(Date.now() - 86400000),
     };
@@ -280,36 +205,8 @@ class MemoryCTFStore {
     this.teams.set(team1.id, team1);
     this.teams.set(team2.id, team2);
 
-    // Initial Solves
-    this.solves.push({
-      id: 'solve-1',
-      challengeId: 'chal-welcome-1',
-      teamId: team1.id,
-      userId: userAlice.id,
-      pointsAwarded: 50,
-      isFirstBlood: true,
-      solvedAt: new Date(Date.now() - 3600000 * 2),
-    });
-
-    this.solves.push({
-      id: 'solve-2',
-      challengeId: 'chal-web-1',
-      teamId: team1.id,
-      userId: userBob.id,
-      pointsAwarded: 100,
-      isFirstBlood: true,
-      solvedAt: new Date(Date.now() - 3600000),
-    });
-
-    this.solves.push({
-      id: 'solve-3',
-      challengeId: 'chal-welcome-1',
-      teamId: team2.id,
-      userId: userCharlie.id,
-      pointsAwarded: 50,
-      isFirstBlood: false,
-      solvedAt: new Date(Date.now() - 7200000),
-    });
+    // Initial Solves start empty - no fabricated competition scores
+    this.solves = [];
   }
 }
 

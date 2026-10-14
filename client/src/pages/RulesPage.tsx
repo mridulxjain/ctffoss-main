@@ -1,75 +1,56 @@
 import React from 'react';
-import { BookOpen, ShieldAlert, Award, Terminal, CheckCircle2 } from 'lucide-react';
 
 export const RulesPage: React.FC = () => {
   return (
-    <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8 animate-in fade-in duration-300">
-      <div>
-        <div className="flex items-center gap-2 text-emerald-400 text-xs font-mono font-semibold uppercase tracking-wider mb-1">
-          <BookOpen className="w-4 h-4" /> Guidelines & Integrity
-        </div>
-        <h1 className="text-3xl font-extrabold text-white tracking-tight">Competition Rules</h1>
-        <p className="text-slate-400 text-sm mt-1">
-          Please review the official regulations governing the FOSS CTF competition.
+    <div className="max-w-4xl mx-auto px-4 sm:px-6 py-8 space-y-6">
+      <div className="border-b border-zinc-800 pb-5">
+        <h1 className="text-xl font-semibold tracking-tight text-zinc-100">
+          Competition Guidelines & Rules
+        </h1>
+        <p className="text-xs text-zinc-400 mt-0.5">
+          General regulations and code of conduct for participants in FOSS CTF.
         </p>
       </div>
 
-      <div className="space-y-6">
+      <div className="space-y-4 text-xs sm:text-sm text-zinc-300">
         {/* Flag Format Card */}
-        <div className="glass-panel p-6 rounded-2xl border border-slate-800 space-y-3">
-          <h2 className="text-base font-bold text-white flex items-center gap-2">
-            <Terminal className="w-4 h-4 text-emerald-400" />
-            1. Flag Formatting
+        <div className="rounded-lg border border-zinc-800 bg-zinc-900/30 p-5 space-y-2">
+          <h2 className="text-sm font-semibold text-zinc-100">
+            1. Flag Format
           </h2>
-          <p className="text-sm text-slate-300 leading-relaxed">
-            All flags follow the standard format:
+          <p className="text-zinc-400 leading-relaxed">
+            All challenge flags adhere to the standard casing and wrapper convention:
           </p>
-          <div className="p-3.5 rounded-xl bg-slate-950 border border-emerald-500/30 text-emerald-300 font-mono text-sm inline-block">
-            FOSSCTF&#123;sample_flag_contents_here&#125;
+          <div className="p-2.5 rounded bg-zinc-950 border border-zinc-800 font-mono text-xs text-emerald-400 select-all inline-block">
+            FOSSCTF&#123;flag_text_here&#125;
           </div>
-          <p className="text-xs text-slate-400">
-            Flags are case-sensitive unless explicitly stated in the challenge description. Do not remove the
-            <code className="text-emerald-400 bg-slate-900 px-1 py-0.5 rounded mx-1">FOSSCTF&#123;&#125;</code>
-            wrapper.
+          <p className="text-zinc-500 text-xs">
+            Submit the entire string including the prefix and braces. Flags are case-sensitive.
           </p>
         </div>
 
-        {/* Scoring & First Blood */}
-        <div className="glass-panel p-6 rounded-2xl border border-slate-800 space-y-3">
-          <h2 className="text-base font-bold text-white flex items-center gap-2">
-            <Award className="w-4 h-4 text-amber-400" />
-            2. Scoring & Tie-Breaking
+        {/* Scoring & Tie-Breaking */}
+        <div className="rounded-lg border border-zinc-800 bg-zinc-900/30 p-5 space-y-2">
+          <h2 className="text-sm font-semibold text-zinc-100">
+            2. Scoring & Tie-Breakers
           </h2>
-          <ul className="space-y-2 text-sm text-slate-300 list-disc list-inside">
-            <li>
-              Challenges award points based on difficulty (e.g., 50 pts for Easy up to 500+ pts for Hard).
-            </li>
-            <li>
-              <strong className="text-white">First Blood:</strong> The first team to capture any challenge earns
-              the First Blood distinction on that challenge.
-            </li>
-            <li>
-              <strong className="text-white">Tie-Breaker:</strong> If two teams tie on points, the team that
-              achieved their latest score first is ranked higher on the leaderboard.
-            </li>
-            <li>
-              <strong className="text-white">Hints:</strong> Hints may carry a point penalty. When unlocked,
-              the penalty is deducted from your team's total points.
-            </li>
+          <ul className="space-y-1.5 text-zinc-400 list-disc list-inside">
+            <li>Challenges award fixed points based on calibrated difficulty.</li>
+            <li>First blood is credited to the first team to successfully solve a challenge.</li>
+            <li>Tie-breaking on the scoreboard is resolved by the timestamp of the team's earlier solve.</li>
+            <li>Unlocking hints may carry point deductions which are subtracted from your team total.</li>
           </ul>
         </div>
 
-        {/* Prohibited Behavior */}
-        <div className="glass-panel p-6 rounded-2xl border border-rose-500/20 bg-rose-950/10 space-y-3">
-          <h2 className="text-base font-bold text-rose-300 flex items-center gap-2">
-            <ShieldAlert className="w-4 h-4 text-rose-400" />
-            3. Strict Prohibitions (Disqualification Offenses)
+        {/* Prohibited Actions */}
+        <div className="rounded-lg border border-zinc-800 bg-zinc-900/30 p-5 space-y-2">
+          <h2 className="text-sm font-semibold text-zinc-100">
+            3. Prohibited Behavior
           </h2>
-          <ul className="space-y-2 text-sm text-slate-300 list-disc list-inside">
-            <li>Attacking the competition infrastructure, scoreboard server, or network perimeter.</li>
-            <li>Sharing flags, hints, or solution writeups between competing teams.</li>
-            <li>Denial of Service (DoS) attacks against challenge instances or platform servers.</li>
-            <li>Automated brute-forcing of flag submission endpoints using excessive rate requests.</li>
+          <ul className="space-y-1.5 text-zinc-400 list-disc list-inside">
+            <li>Attacking the competition platform infrastructure or scoring servers.</li>
+            <li>Sharing flags, keys, or spoilers between competing teams.</li>
+            <li>Denial of service (DoS) attacks or automated brute-forcing against endpoints.</li>
           </ul>
         </div>
       </div>

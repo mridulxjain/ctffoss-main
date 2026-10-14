@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { api } from '../lib/api';
 import { useAuth } from '../context/AuthContext';
-import { Users, UserPlus, Shield, Copy, Check, Key, Trophy, Sparkles, AlertCircle } from 'lucide-react';
+import { Copy, Check, AlertCircle } from 'lucide-react';
 import type { TeamDTO } from '@fossctf/shared';
 
 export const TeamPage: React.FC = () => {
@@ -9,6 +9,7 @@ export const TeamPage: React.FC = () => {
   const [teamDetails, setTeamDetails] = useState<TeamDTO | null>(null);
   const [teamName, setTeamName] = useState('');
   const [inviteCode, setInviteCode] = useState('');
+  const [activeTab, setActiveTab] = useState<'join' | 'create'>('join');
   const [actionLoading, setActionLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
@@ -68,168 +69,169 @@ export const TeamPage: React.FC = () => {
   };
 
   const handleCopyCode = () => {
-    if (!teamDetails?.inviteCode) return;
-    navigator.clipboard.writeText(teamDetails.inviteCode);
+    const code = teamDetails?.inviteCode || team?.inviteCode;
+    if (!code) return;
+    navigator.clipboard.writeText(code);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };
 
   return (
-    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8 animate-in fade-in duration-300">
+    <div className="max-w-6xl mx-auto px-4 sm:px-6 py-8 space-y-6">
       {/* Page Header */}
-      <div>
-        <div className="flex items-center gap-2 text-emerald-400 text-xs font-mono font-semibold uppercase tracking-wider mb-1">
-          <Users className="w-4 h-4" /> Team Headquarters
-        </div>
-        <h1 className="text-3xl font-extrabold text-white tracking-tight">Team Operations</h1>
-        <p className="text-slate-400 text-sm mt-1">
-          CTF competitions are fought in teams of up to 4 members. Share invites and conquer challenges
-          together.
+      <div className="border-b border-zinc-800 pb-5">
+        <h1 className="text-xl font-semibold tracking-tight text-zinc-100">
+          Team Management
+        </h1>
+        <p className="text-xs text-zinc-400 mt-0.5">
+          Form or join a team with your peers to collaborate and compete together.
         </p>
       </div>
 
       {errorMsg && (
-        <div className="p-4 rounded-xl bg-red-950/40 border border-red-500/40 text-red-300 text-sm flex items-center gap-2.5">
-          <AlertCircle className="w-5 h-5 shrink-0 text-red-400" />
+        <div className="p-3 rounded-md bg-rose-950/40 border border-rose-900/60 text-rose-300 text-xs flex items-center gap-2">
+          <AlertCircle className="w-4 h-4 shrink-0 text-rose-400" />
           <span>{errorMsg}</span>
         </div>
       )}
 
       {/* Case 1: User does NOT have a team */}
       {!user?.teamId ? (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pt-4">
-          {/* Create Team Card */}
-          <div className="glass-panel p-6 sm:p-8 rounded-2xl border border-slate-800 space-y-6">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-xl bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-center text-emerald-400">
-                <Shield className="w-5 h-5" />
-              </div>
-              <div>
-                <h3 className="text-lg font-bold text-white">Create a New Team</h3>
-                <p className="text-xs text-slate-400">
-                  You will become the team founder and receive an invite code.
-                </p>
-              </div>
-            </div>
-
-            <form onSubmit={handleCreateTeam} className="space-y-4">
-              <div>
-                <label className="block text-xs font-semibold uppercase tracking-wider text-slate-400 mb-2">
-                  Team Name
-                </label>
-                <input
-                  type="text"
-                  value={teamName}
-                  onChange={(e) => setTeamName(e.target.value)}
-                  placeholder="e.g. CyberVanguard"
-                  className="w-full px-4 py-2.5 rounded-xl bg-slate-900 border border-slate-700 text-white placeholder-slate-400 text-sm focus:outline-none focus:border-emerald-500"
-                />
-              </div>
-
-              <button
-                type="submit"
-                disabled={actionLoading || !teamName.trim()}
-                className="w-full py-2.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 disabled:opacity-50 text-black font-bold text-sm tracking-wide transition shadow-glow flex items-center justify-center gap-2"
-              >
-                <Shield className="w-4 h-4" />
-                {actionLoading ? 'Creating...' : 'Form Team'}
-              </button>
-            </form>
+        <div className="max-w-md mx-auto py-6 space-y-4">
+          {/* Segmented Control Toggle */}
+          <div className="grid grid-cols-2 p-1 rounded-md bg-zinc-900 border border-zinc-800 text-xs">
+            <button
+              onClick={() => {
+                setActiveTab('join');
+                setErrorMsg(null);
+              }}
+              className={`py-1.5 rounded text-center font-medium transition-colors ${
+                activeTab === 'join'
+                  ? 'bg-zinc-800 text-zinc-100 shadow-sm'
+                  : 'text-zinc-400 hover:text-zinc-200'
+              }`}
+            >
+              Join a Team
+            </button>
+            <button
+              onClick={() => {
+                setActiveTab('create');
+                setErrorMsg(null);
+              }}
+              className={`py-1.5 rounded text-center font-medium transition-colors ${
+                activeTab === 'create'
+                  ? 'bg-zinc-800 text-zinc-100 shadow-sm'
+                  : 'text-zinc-400 hover:text-zinc-200'
+              }`}
+            >
+              Create a Team
+            </button>
           </div>
 
-          {/* Join Team Card */}
-          <div className="glass-panel p-6 sm:p-8 rounded-2xl border border-slate-800 space-y-6">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-xl bg-cyan-500/10 border border-cyan-500/30 flex items-center justify-center text-cyan-400">
-                <UserPlus className="w-5 h-5" />
-              </div>
-              <div>
-                <h3 className="text-lg font-bold text-white">Join an Existing Team</h3>
-                <p className="text-xs text-slate-400">Enter the secret invite code provided by your teammate.</p>
-              </div>
-            </div>
+          {/* Form Container */}
+          <div className="rounded-lg border border-zinc-800 bg-zinc-900/40 p-5 space-y-4">
+            {activeTab === 'join' ? (
+              <form onSubmit={handleJoinTeam} className="space-y-4">
+                <div className="space-y-1.5">
+                  <label className="block text-xs font-medium text-zinc-300">
+                    Team Invite Code
+                  </label>
+                  <input
+                    type="text"
+                    value={inviteCode}
+                    onChange={(e) => setInviteCode(e.target.value)}
+                    placeholder="Enter 12-character code"
+                    className="w-full px-3 py-2 rounded-md bg-zinc-900 border border-zinc-800 text-zinc-100 placeholder-zinc-500 font-mono text-xs focus:outline-none focus:border-zinc-600 uppercase tracking-wider"
+                  />
+                  <p className="text-[11px] text-zinc-500">
+                    Ask your team creator for their invite code.
+                  </p>
+                </div>
 
-            <form onSubmit={handleJoinTeam} className="space-y-4">
-              <div>
-                <label className="block text-xs font-semibold uppercase tracking-wider text-slate-400 mb-2">
-                  Secret Invite Code
-                </label>
-                <input
-                  type="text"
-                  value={inviteCode}
-                  onChange={(e) => setInviteCode(e.target.value)}
-                  placeholder="e.g. BEASTS2026"
-                  className="w-full px-4 py-2.5 rounded-xl bg-slate-900 border border-slate-700 text-white placeholder-slate-400 font-mono text-sm focus:outline-none focus:border-cyan-500 uppercase tracking-widest"
-                />
-              </div>
+                <button
+                  type="submit"
+                  disabled={actionLoading || !inviteCode.trim()}
+                  className="w-full py-2 rounded-md bg-zinc-100 hover:bg-white text-zinc-900 font-medium text-xs transition-colors disabled:opacity-50"
+                >
+                  {actionLoading ? 'Joining...' : 'Join Team'}
+                </button>
+              </form>
+            ) : (
+              <form onSubmit={handleCreateTeam} className="space-y-4">
+                <div className="space-y-1.5">
+                  <label className="block text-xs font-medium text-zinc-300">
+                    Team Name
+                  </label>
+                  <input
+                    type="text"
+                    value={teamName}
+                    onChange={(e) => setTeamName(e.target.value)}
+                    placeholder="e.g. Binary Beasts"
+                    className="w-full px-3 py-2 rounded-md bg-zinc-900 border border-zinc-800 text-zinc-100 placeholder-zinc-500 text-xs focus:outline-none focus:border-zinc-600"
+                  />
+                  <p className="text-[11px] text-zinc-500">
+                    Choose a unique name for your team.
+                  </p>
+                </div>
 
-              <button
-                type="submit"
-                disabled={actionLoading || !inviteCode.trim()}
-                className="w-full py-2.5 rounded-xl bg-cyan-500 hover:bg-cyan-400 disabled:opacity-50 text-black font-bold text-sm tracking-wide transition shadow-cyan-glow flex items-center justify-center gap-2"
-              >
-                <UserPlus className="w-4 h-4" />
-                {actionLoading ? 'Joining...' : 'Join Team'}
-              </button>
-            </form>
+                <button
+                  type="submit"
+                  disabled={actionLoading || !teamName.trim()}
+                  className="w-full py-2 rounded-md bg-emerald-600 hover:bg-emerald-500 text-white font-medium text-xs transition-colors disabled:opacity-50"
+                >
+                  {actionLoading ? 'Creating...' : 'Create Team'}
+                </button>
+              </form>
+            )}
           </div>
         </div>
       ) : (
         /* Case 2: User HAS a team */
         <div className="space-y-6">
           {/* Team Overview Card */}
-          <div className="glass-panel p-6 sm:p-8 rounded-2xl border border-slate-800 relative overflow-hidden bg-gradient-to-r from-slate-900 to-[#0c1424]">
-            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-6">
+          <div className="rounded-lg border border-zinc-800 bg-zinc-900/30 p-5 space-y-4">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
               <div>
-                <div className="text-xs font-mono text-emerald-400 uppercase tracking-wider mb-1">
-                  Active Squad
-                </div>
-                <h2 className="text-2xl font-extrabold text-white flex items-center gap-2.5">
+                <span className="text-xs text-zinc-500 font-mono uppercase tracking-wider">
+                  Active Team
+                </span>
+                <h2 className="text-lg font-semibold text-zinc-100 mt-0.5">
                   {teamDetails?.name || team?.name}
-                  <Sparkles className="w-5 h-5 text-amber-400" />
                 </h2>
-                <p className="text-xs text-slate-400 mt-1">
-                  Formed on{' '}
-                  {teamDetails?.createdAt
-                    ? new Date(teamDetails.createdAt).toLocaleDateString()
-                    : 'CTF Season 2026'}
-                </p>
               </div>
 
-              <div className="flex items-center gap-4">
-                <div className="bg-slate-950/70 px-5 py-3 rounded-xl border border-slate-800 text-right">
-                  <div className="text-[11px] text-slate-400 uppercase font-mono">Total Points</div>
-                  <div className="text-2xl font-mono font-extrabold text-emerald-400">
+              <div className="flex items-center gap-6">
+                <div>
+                  <span className="text-[11px] text-zinc-500 font-mono block">Score</span>
+                  <span className="text-lg font-mono font-semibold text-zinc-100">
                     {teamDetails?.totalScore ?? team?.totalScore ?? 0} pts
-                  </div>
+                  </span>
                 </div>
               </div>
             </div>
 
-            {/* Invite Code Box */}
-            <div className="mt-6 pt-6 border-t border-slate-800/80 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-              <div className="flex items-center gap-2 text-xs text-slate-300">
-                <Key className="w-4 h-4 text-cyan-400" />
-                <span>Invite teammates with your code:</span>
+            {/* Invite Code Bar */}
+            <div className="pt-3 border-t border-zinc-800/80 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
+              <div className="text-zinc-400">
+                Share this invite code to add members to your team:
               </div>
 
               <div className="flex items-center gap-2">
-                <div className="px-4 py-2 rounded-xl bg-slate-950 border border-cyan-500/30 text-cyan-300 font-mono font-bold tracking-widest text-sm">
+                <code className="px-2.5 py-1 rounded bg-zinc-900 border border-zinc-800 font-mono text-zinc-200 text-xs select-all">
                   {teamDetails?.inviteCode || team?.inviteCode}
-                </div>
-
+                </code>
                 <button
                   onClick={handleCopyCode}
-                  className="px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-medium transition flex items-center gap-1.5"
+                  className="px-2.5 py-1 rounded bg-zinc-800 hover:bg-zinc-700 text-zinc-200 text-xs transition-colors flex items-center gap-1"
                 >
                   {copied ? (
                     <>
-                      <Check className="w-3.5 h-3.5 text-emerald-400" />
-                      <span className="text-emerald-400 font-semibold">Copied!</span>
+                      <Check className="w-3 h-3 text-emerald-400" />
+                      <span className="text-emerald-400 font-medium">Copied</span>
                     </>
                   ) : (
                     <>
-                      <Copy className="w-3.5 h-3.5" />
+                      <Copy className="w-3 h-3" />
                       <span>Copy</span>
                     </>
                   )}
@@ -239,36 +241,28 @@ export const TeamPage: React.FC = () => {
           </div>
 
           {/* Members Roster */}
-          <div className="glass-panel p-6 rounded-2xl border border-slate-800 space-y-4">
+          <div className="space-y-2">
             <div className="flex items-center justify-between">
-              <h3 className="text-base font-bold text-white flex items-center gap-2">
-                <Users className="w-4 h-4 text-emerald-400" />
-                Team Roster ({teamDetails?.members?.length || 1} / 4 Members)
+              <h3 className="text-xs font-semibold text-zinc-400 uppercase tracking-wider">
+                Roster ({teamDetails?.members?.length || 1} / 4 Members)
               </h3>
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 pt-2">
+            <div className="rounded-lg border border-zinc-800 bg-zinc-900/30 overflow-hidden divide-y divide-zinc-800/80">
               {teamDetails?.members?.map((member) => (
                 <div
                   key={member.id}
-                  className="p-4 rounded-xl bg-slate-900/60 border border-slate-800 flex items-center gap-3"
+                  className="px-4 py-3 flex items-center justify-between text-xs"
                 >
-                  <div className="w-10 h-10 rounded-full bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-center font-mono font-bold text-emerald-400 text-sm">
-                    {member.username.slice(0, 2).toUpperCase()}
+                  <div className="flex items-center gap-2.5">
+                    <span className="font-medium text-zinc-200">{member.username}</span>
+                    {member.id === user.id && (
+                      <span className="text-[10px] font-mono px-1.5 py-0.2 rounded bg-zinc-800 text-zinc-400 border border-zinc-700">
+                        You
+                      </span>
+                    )}
                   </div>
-                  <div>
-                    <div className="text-sm font-semibold text-white flex items-center gap-1.5">
-                      {member.username}
-                      {member.id === user.id && (
-                        <span className="text-[10px] font-mono px-1 rounded bg-slate-800 text-slate-300">
-                          You
-                        </span>
-                      )}
-                    </div>
-                    <div className="text-xs text-slate-400 truncate max-w-[150px]">
-                      {member.email}
-                    </div>
-                  </div>
+                  <span className="text-zinc-500 font-mono">{member.email}</span>
                 </div>
               ))}
             </div>
