@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "tsx watch src/index.ts",
     "test": "NODE_ENV=test tsx --test test/competition.test.ts test/oidc.test.ts test/reliability.test.ts test/devRoster.test.ts test/serverless.test.ts",
-    "build": "tsc && npm run db:generate",
+    "build": "npm run db:generate && tsc",
     "start": "node dist/index.js",
     "db:generate": "prisma generate",
     "db:push": "prisma db push",

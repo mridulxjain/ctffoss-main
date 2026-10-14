@@ -14,7 +14,7 @@
     "dev:client": "npm run dev --workspace=client",
     "build": "npm run build --workspaces --if-present",
     "build:shared": "npm run build --workspace=@fossctf/shared",
-    "build:server": "npm run build --workspace=server",
+    "build:server": "npm run db:generate --workspace=server && npm run build --workspace=server",
     "build:client": "npm run build --workspace=client",
     "db:generate": "npm run db:generate --workspace=server",
     "db:migrate:check": "npm run db:migrate:check --workspace=server",

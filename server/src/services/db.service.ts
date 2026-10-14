@@ -1428,7 +1428,7 @@ export const dbService = {
     const now = new Date();
 
     if (hasDb) {
-      return await prisma.$transaction(async (tx) => {
+      return await prisma.$transaction(async (tx: any) => {
         const priorSolves = await tx.solve.count({ where: { challengeId } });
         const isFirstBlood = priorSolves === 0;
 
@@ -1507,13 +1507,13 @@ export const dbService = {
         },
       });
 
-      const calculated = teams
-        .map((t) => {
-          const totalScore = t.solves.reduce((sum, s) => sum + s.pointsAwarded, 0);
+      const calculated = (teams as any[])
+        .map((t: any) => {
+          const totalScore = (t.solves as any[]).reduce((sum: number, s: any) => sum + s.pointsAwarded, 0);
           const solvesCount = t.solves.length;
           let lastSolveAt: Date | null = null;
           if (t.solves.length > 0) {
-            lastSolveAt = new Date(Math.max(...t.solves.map((s) => s.solvedAt.getTime())));
+            lastSolveAt = new Date(Math.max(...(t.solves as any[]).map((s: any) => s.solvedAt.getTime())));
           }
           return {
             teamId: t.id,
@@ -1523,8 +1523,8 @@ export const dbService = {
             lastSolveAt,
           };
         })
-        .filter((t) => t.totalScore > 0)
-        .sort((a, b) => {
+        .filter((t: any) => t.totalScore > 0)
+        .sort((a: any, b: any) => {
           if (b.totalScore !== a.totalScore) return b.totalScore - a.totalScore;
           const timeA = a.lastSolveAt ? a.lastSolveAt.getTime() : Infinity;
           const timeB = b.lastSolveAt ? b.lastSolveAt.getTime() : Infinity;
@@ -1532,7 +1532,7 @@ export const dbService = {
           return a.teamId.localeCompare(b.teamId);
         });
 
-      return calculated.map((t, index) => ({
+      return calculated.map((t: any, index: number) => ({
         rank: index + 1,
         teamId: t.teamId,
         teamName: t.teamName,
@@ -1590,7 +1590,7 @@ export const dbService = {
       });
 
       const teamCumulative = new Map<string, number>();
-      return solves.map((s) => {
+      return (solves as any[]).map((s: any) => {
         const cur = teamCumulative.get(s.teamId) || 0;
         const next = cur + s.pointsAwarded;
         teamCumulative.set(s.teamId, next);
@@ -1630,7 +1630,7 @@ export const dbService = {
     const hasDb = await checkPrisma();
     if (hasDb) {
       const flags = await prisma.flag.findMany({ where: { challengeId } });
-      return flags.map((f) => f.flagHash);
+      return (flags as any[]).map((f: any) => f.flagHash);
     }
     const c = memoryStore.challenges.find((k) => k.id === challengeId);
     return c && c.flagHash ? [c.flagHash] : [];
@@ -1642,7 +1642,7 @@ export const dbService = {
       const hint = await prisma.hint.findUnique({ where: { id: hintId } });
       if (!hint) return { success: false };
 
-      await prisma.$transaction(async (tx) => {
+      await prisma.$transaction(async (tx: any) => {
         await tx.hintUnlock.create({
           data: { teamId, hintId },
         });
@@ -1689,7 +1689,7 @@ export const dbService = {
         orderBy: [{ categoryId: 'asc' }, { sortOrder: 'asc' }],
       });
 
-      return chals.map((c) => ({
+      return (chals as any[]).map((c: any) => ({
         id: c.id,
         slug: c.slug,
         title: c.title,
@@ -1815,7 +1815,7 @@ export const dbService = {
 
     const hasDb = await checkPrisma();
     if (hasDb) {
-      const created = await prisma.$transaction(async (tx) => {
+      const created = await prisma.$transaction(async (tx: any) => {
         const c = await tx.challenge.create({
           data: {
             title: data.title.trim(),
@@ -2700,7 +2700,7 @@ export const dbService = {
         },
         orderBy: { name: 'asc' },
       });
-      return teams.map((t) => {
+      return (teams as any[]).map((t: any) => {
         const attempt = (t as any).attempts?.[0];
         const isSolved = Boolean(isLiveOrEnded && attempt?.status === 'COMPLETED');
         const attemptStatus = isLiveOrEnded ? (attempt?.status as any || 'NOT_STARTED') : 'NOT_STARTED';
@@ -2712,7 +2712,7 @@ export const dbService = {
           isReady: Boolean((t as any).isReady),
           readyAt: (t as any).readyAt ? (t as any).readyAt.toISOString() : null,
           membersCount: t.members.length,
-          totalScore: isLiveOrEnded ? t.solves.reduce((sum, s) => sum + s.pointsAwarded, 0) : 0,
+          totalScore: isLiveOrEnded ? (t.solves as any[]).reduce((sum: number, s: any) => sum + s.pointsAwarded, 0) : 0,
           isSolved,
           attemptStatus,
           createdAt: t.createdAt.toISOString(),
@@ -2772,7 +2772,7 @@ export const dbService = {
         flagHash: null,
         externalUrl: (c as any).externalUrl || (c.slug === 'valenfind' ? config.valenfindChallengeUrl : null),
         isCompetitionChallenge: c.slug === 'valenfind' || (c as any).isCompetitionChallenge === true,
-        hints: c.hints.map((h) => ({
+        hints: (c.hints as any[]).map((h: any) => ({
           id: h.id,
           challengeId: h.challengeId,
           content: h.content,
@@ -2831,7 +2831,7 @@ export const dbService = {
         orderBy: { name: 'asc' },
       });
 
-      rawTeams = teams.map((t) => ({
+      rawTeams = (teams as any[]).map((t: any) => ({
         teamId: t.id,
         teamName: t.name,
         attempt: t.attempts[0] || null,
