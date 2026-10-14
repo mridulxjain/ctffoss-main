@@ -95,6 +95,17 @@ export const challengeController = {
       return;
     }
 
+    if (challenge.isArchived) {
+      res.status(400).json({
+        success: false,
+        error: {
+          message: 'This challenge has been archived and is no longer accepting submissions.',
+          code: 'CHALLENGE_ARCHIVED',
+        },
+      });
+      return;
+    }
+
     // Check if team has already solved this challenge
     const alreadySolved = await dbService.hasTeamSolved(teamId, id);
     if (alreadySolved) {
@@ -122,7 +133,12 @@ export const challengeController = {
         return;
       }
 
-      if (session.status === 'EXPIRED' || (session.remainingSeconds !== null && session.remainingSeconds <= 0)) {
+      const now = Date.now();
+      const isExpired =
+        session.status === 'EXPIRED' ||
+        (session.expiresAt && now > new Date(session.expiresAt).getTime());
+
+      if (isExpired) {
         res.status(400).json({
           success: false,
           error: {

@@ -75,6 +75,7 @@ model Challenge {
   difficulty      Difficulty             @default(EASY)
   points          Int                    @default(100)
   isPublished     Boolean                @default(false)
+  isArchived      Boolean                @default(false) // Whether challenge is archived/disabled
   isTimed         Boolean                @default(false) // Whether challenge has a team time limit
   durationMinutes Int?                   @default(30)   // Shared duration in minutes if timed
   author          String?
@@ -88,6 +89,7 @@ model Challenge {
   updatedAt       DateTime               @updatedAt
 
   @@index([categoryId, isPublished])
+  @@index([isArchived])
 }
 
 model TeamChallengeSession {

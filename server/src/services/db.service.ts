@@ -1,6 +1,14 @@
 import { prisma } from '../lib/prisma';
 import { hashFlag } from '../utils/crypto';
-import { Role, Difficulty, SessionStatus, TeamChallengeSessionDTO } from '@fossctf/shared';
+import {
+  Role,
+  Difficulty,
+  SessionStatus,
+  TeamChallengeSessionDTO,
+  AdminChallengeDTO,
+  CreateChallengeRequest,
+  UpdateChallengeRequest,
+} from '@fossctf/shared';
 
 export interface DBUser {
   id: string;
@@ -45,12 +53,15 @@ export interface DBChallenge {
   difficulty: Difficulty;
   points: number;
   isPublished: boolean;
+  isArchived: boolean;
   isTimed: boolean;
   durationMinutes: number | null;
   author: string | null;
   sortOrder: number;
   flagHash: string;
   hints: DBHint[];
+  createdAt: Date;
+  updatedAt: Date;
 }
 
 export interface DBSolve {
@@ -137,6 +148,7 @@ class MemoryCTFStore {
         difficulty: 'EASY',
         points: 100,
         isPublished: true,
+        isArchived: false,
         isTimed: false,
         durationMinutes: null,
         author: 'FOSS Platform Team',
@@ -151,6 +163,8 @@ class MemoryCTFStore {
             sortOrder: 1,
           },
         ],
+        createdAt: new Date(),
+        updatedAt: new Date(),
       },
       {
         id: 'chal-timed-sample-2',
@@ -162,6 +176,7 @@ class MemoryCTFStore {
         difficulty: 'MEDIUM',
         points: 150,
         isPublished: true,
+        isArchived: false,
         isTimed: true,
         durationMinutes: 30,
         author: 'FOSS Security Squad',
@@ -176,6 +191,8 @@ class MemoryCTFStore {
             sortOrder: 1,
           },
         ],
+        createdAt: new Date(),
+        updatedAt: new Date(),
       },
     ];
 
@@ -431,7 +448,7 @@ export const dbService = {
     const hasDb = await checkPrisma();
     if (hasDb) {
       const chals = await prisma.challenge.findMany({
-        where: { isPublished: true },
+        where: { isPublished: true, isArchived: false },
         include: {
           category: true,
           solves: true,
@@ -453,7 +470,7 @@ export const dbService = {
               sessionStatus = 'NOT_STARTED';
             } else if (teamSession.status === 'COMPLETED') {
               sessionStatus = 'COMPLETED';
-            } else if (teamSession.expiresAt.getTime() < now || teamSession.status === 'EXPIRED') {
+            } else if (now > teamSession.expiresAt.getTime() || teamSession.status === 'EXPIRED') {
               sessionStatus = 'EXPIRED';
             } else {
               sessionStatus = 'ACTIVE';
@@ -480,45 +497,47 @@ export const dbService = {
     }
 
     const now = Date.now();
-    return memoryStore.challenges.map((c) => {
-      const cat = memoryStore.categories.find((k) => k.id === c.categoryId);
-      const chSolves = memoryStore.solves.filter((s) => s.challengeId === c.id);
-      const isSolvedByTeam = teamId ? chSolves.some((s) => s.teamId === teamId) : false;
+    return memoryStore.challenges
+      .filter((c) => c.isPublished && !c.isArchived)
+      .map((c) => {
+        const cat = memoryStore.categories.find((k) => k.id === c.categoryId);
+        const chSolves = memoryStore.solves.filter((s) => s.challengeId === c.id);
+        const isSolvedByTeam = teamId ? chSolves.some((s) => s.teamId === teamId) : false;
 
-      let sessionStatus: SessionStatus | undefined;
-      if (c.isTimed && teamId) {
-        if (isSolvedByTeam) {
-          sessionStatus = 'COMPLETED';
-        } else {
-          const session = memoryStore.sessions.get(`${teamId}:${c.id}`);
-          if (!session) {
-            sessionStatus = 'NOT_STARTED';
-          } else if (session.status === 'COMPLETED') {
+        let sessionStatus: SessionStatus | undefined;
+        if (c.isTimed && teamId) {
+          if (isSolvedByTeam) {
             sessionStatus = 'COMPLETED';
-          } else if (session.expiresAt.getTime() < now || session.status === 'EXPIRED') {
-            sessionStatus = 'EXPIRED';
           } else {
-            sessionStatus = 'ACTIVE';
+            const session = memoryStore.sessions.get(`${teamId}:${c.id}`);
+            if (!session) {
+              sessionStatus = 'NOT_STARTED';
+            } else if (session.status === 'COMPLETED') {
+              sessionStatus = 'COMPLETED';
+            } else if (now > session.expiresAt.getTime() || session.status === 'EXPIRED') {
+              sessionStatus = 'EXPIRED';
+            } else {
+              sessionStatus = 'ACTIVE';
+            }
           }
         }
-      }
 
-      return {
-        id: c.id,
-        slug: c.slug,
-        title: c.title,
-        categoryId: c.categoryId,
-        categoryName: cat?.name || 'General',
-        difficulty: c.difficulty,
-        points: c.points,
-        solveCount: chSolves.length,
-        isSolvedByTeam,
-        isTimed: c.isTimed,
-        durationMinutes: c.durationMinutes,
-        sessionStatus,
-        author: c.author,
-      };
-    });
+        return {
+          id: c.id,
+          slug: c.slug,
+          title: c.title,
+          categoryId: c.categoryId,
+          categoryName: cat?.name || 'General',
+          difficulty: c.difficulty,
+          points: c.points,
+          solveCount: chSolves.length,
+          isSolvedByTeam,
+          isTimed: c.isTimed,
+          durationMinutes: c.durationMinutes,
+          sessionStatus,
+          author: c.author,
+        };
+      });
   },
 
   async getChallengeDetail(challengeId: string, teamId?: string | null): Promise<any | null> {
@@ -558,6 +577,8 @@ export const dbService = {
         points: c.points,
         solveCount: c.solves.length,
         isSolvedByTeam: teamId ? c.solves.some((s) => s.teamId === teamId) : false,
+        isPublished: c.isPublished,
+        isArchived: c.isArchived,
         isTimed: c.isTimed,
         durationMinutes: c.durationMinutes,
         session: sessionDTO,
@@ -593,6 +614,8 @@ export const dbService = {
       points: c.points,
       solveCount: chSolves.length,
       isSolvedByTeam: teamId ? chSolves.some((s) => s.teamId === teamId) : false,
+      isPublished: c.isPublished,
+      isArchived: c.isArchived,
       isTimed: c.isTimed,
       durationMinutes: c.durationMinutes,
       session: sessionDTO,
@@ -659,7 +682,7 @@ export const dbService = {
       let currentStatus: SessionStatus = session.status as SessionStatus;
       if (isSolved || currentStatus === 'COMPLETED') {
         currentStatus = 'COMPLETED';
-      } else if (session.expiresAt.getTime() <= now) {
+      } else if (now > session.expiresAt.getTime()) {
         currentStatus = 'EXPIRED';
         if (session.status !== 'EXPIRED') {
           await prisma.teamChallengeSession.update({
@@ -671,7 +694,7 @@ export const dbService = {
 
       const remainingSeconds =
         currentStatus === 'ACTIVE'
-          ? Math.max(0, Math.floor((session.expiresAt.getTime() - now) / 1000))
+          ? Math.max(0, Math.ceil((session.expiresAt.getTime() - now) / 1000))
           : currentStatus === 'EXPIRED'
           ? 0
           : null;
@@ -726,14 +749,14 @@ export const dbService = {
     let currentStatus: SessionStatus = session.status;
     if (isSolved || currentStatus === 'COMPLETED') {
       currentStatus = 'COMPLETED';
-    } else if (session.expiresAt.getTime() <= now) {
+    } else if (now > session.expiresAt.getTime()) {
       currentStatus = 'EXPIRED';
       session.status = 'EXPIRED';
     }
 
     const remainingSeconds =
       currentStatus === 'ACTIVE'
-        ? Math.max(0, Math.floor((session.expiresAt.getTime() - now) / 1000))
+        ? Math.max(0, Math.ceil((session.expiresAt.getTime() - now) / 1000))
         : currentStatus === 'EXPIRED'
         ? 0
         : null;
@@ -759,8 +782,11 @@ export const dbService = {
 
     if (hasDb) {
       const challenge = await prisma.challenge.findUnique({ where: { id: challengeId } });
-      if (!challenge) {
+      if (!challenge || !challenge.isPublished) {
         throw new Error('Challenge not found');
+      }
+      if (challenge.isArchived) {
+        throw new Error('Challenge is archived and cannot be started');
       }
 
       const durationMins = challenge.durationMinutes || 30;
@@ -783,8 +809,11 @@ export const dbService = {
     }
 
     const challenge = memoryStore.challenges.find((k) => k.id === challengeId);
-    if (!challenge) {
+    if (!challenge || !challenge.isPublished) {
       throw new Error('Challenge not found');
+    }
+    if (challenge.isArchived) {
+      throw new Error('Challenge is archived and cannot be started');
     }
 
     const sessionKey = `${teamId}:${challengeId}`;
@@ -1033,4 +1062,454 @@ export const dbService = {
     }
     return { success: true, content: targetHint.content };
   },
+
+  /**
+   * Admin Operations for Challenge Engine
+   */
+  async listAdminChallenges(): Promise<AdminChallengeDTO[]> {
+    const hasDb = await checkPrisma();
+    if (hasDb) {
+      const chals = await prisma.challenge.findMany({
+        include: {
+          category: true,
+          flags: true,
+          solves: true,
+        },
+        orderBy: [{ categoryId: 'asc' }, { sortOrder: 'asc' }],
+      });
+
+      return chals.map((c) => ({
+        id: c.id,
+        slug: c.slug,
+        title: c.title,
+        description: c.description,
+        categoryId: c.categoryId,
+        categoryName: c.category.name,
+        difficulty: c.difficulty as Difficulty,
+        points: c.points,
+        isPublished: c.isPublished,
+        isArchived: c.isArchived,
+        isTimed: c.isTimed,
+        durationMinutes: c.durationMinutes,
+        author: c.author,
+        sortOrder: c.sortOrder,
+        hasFlag: c.flags.length > 0,
+        flagCount: c.flags.length,
+        solveCount: c.solves.length,
+        createdAt: c.createdAt.toISOString(),
+        updatedAt: c.updatedAt.toISOString(),
+      }));
+    }
+
+    return memoryStore.challenges.map((c) => {
+      const cat = memoryStore.categories.find((k) => k.id === c.categoryId);
+      const chSolves = memoryStore.solves.filter((s) => s.challengeId === c.id);
+      return {
+        id: c.id,
+        slug: c.slug,
+        title: c.title,
+        description: c.description,
+        categoryId: c.categoryId,
+        categoryName: cat?.name || 'General',
+        difficulty: c.difficulty,
+        points: c.points,
+        isPublished: c.isPublished,
+        isArchived: c.isArchived,
+        isTimed: c.isTimed,
+        durationMinutes: c.durationMinutes,
+        author: c.author,
+        sortOrder: c.sortOrder,
+        hasFlag: Boolean(c.flagHash),
+        flagCount: c.flagHash ? 1 : 0,
+        solveCount: chSolves.length,
+        createdAt: c.createdAt.toISOString(),
+        updatedAt: c.updatedAt.toISOString(),
+      };
+    });
+  },
+
+  async getAdminChallenge(id: string): Promise<AdminChallengeDTO | null> {
+    const hasDb = await checkPrisma();
+    if (hasDb) {
+      const c = await prisma.challenge.findUnique({
+        where: { id },
+        include: {
+          category: true,
+          flags: true,
+          solves: true,
+        },
+      });
+      if (!c) return null;
+      return {
+        id: c.id,
+        slug: c.slug,
+        title: c.title,
+        description: c.description,
+        categoryId: c.categoryId,
+        categoryName: c.category.name,
+        difficulty: c.difficulty as Difficulty,
+        points: c.points,
+        isPublished: c.isPublished,
+        isArchived: c.isArchived,
+        isTimed: c.isTimed,
+        durationMinutes: c.durationMinutes,
+        author: c.author,
+        sortOrder: c.sortOrder,
+        hasFlag: c.flags.length > 0,
+        flagCount: c.flags.length,
+        solveCount: c.solves.length,
+        createdAt: c.createdAt.toISOString(),
+        updatedAt: c.updatedAt.toISOString(),
+      };
+    }
+
+    const c = memoryStore.challenges.find((k) => k.id === id);
+    if (!c) return null;
+    const cat = memoryStore.categories.find((k) => k.id === c.categoryId);
+    const chSolves = memoryStore.solves.filter((s) => s.challengeId === c.id);
+    return {
+      id: c.id,
+      slug: c.slug,
+      title: c.title,
+      description: c.description,
+      categoryId: c.categoryId,
+      categoryName: cat?.name || 'General',
+      difficulty: c.difficulty,
+      points: c.points,
+      isPublished: c.isPublished,
+      isArchived: c.isArchived,
+      isTimed: c.isTimed,
+      durationMinutes: c.durationMinutes,
+      author: c.author,
+      sortOrder: c.sortOrder,
+      hasFlag: Boolean(c.flagHash),
+      flagCount: c.flagHash ? 1 : 0,
+      solveCount: chSolves.length,
+      createdAt: c.createdAt.toISOString(),
+      updatedAt: c.updatedAt.toISOString(),
+    };
+  },
+
+  async createChallenge(data: CreateChallengeRequest): Promise<AdminChallengeDTO> {
+    if (data.points <= 0) {
+      throw new Error('Point value must be greater than 0');
+    }
+    if (data.isTimed && (!data.durationMinutes || data.durationMinutes <= 0)) {
+      throw new Error('Timed challenges must specify a positive duration in minutes');
+    }
+
+    const slug = data.slug?.trim() || slugify(data.title);
+    const hashed = hashFlag(data.flag);
+    const now = new Date();
+
+    const hasDb = await checkPrisma();
+    if (hasDb) {
+      const created = await prisma.$transaction(async (tx) => {
+        const c = await tx.challenge.create({
+          data: {
+            title: data.title.trim(),
+            slug,
+            description: data.description,
+            categoryId: data.categoryId,
+            difficulty: data.difficulty,
+            points: data.points,
+            isPublished: data.isPublished || false,
+            isArchived: data.isArchived || false,
+            isTimed: data.isTimed || false,
+            durationMinutes: data.isTimed ? data.durationMinutes || 30 : null,
+            author: data.author || null,
+            sortOrder: 0,
+          },
+          include: { category: true },
+        });
+
+        await tx.flag.create({
+          data: {
+            challengeId: c.id,
+            flagHash: hashed,
+            isCaseSensitive: true,
+          },
+        });
+
+        return c;
+      });
+
+      return {
+        id: created.id,
+        slug: created.slug,
+        title: created.title,
+        description: created.description,
+        categoryId: created.categoryId,
+        categoryName: created.category.name,
+        difficulty: created.difficulty as Difficulty,
+        points: created.points,
+        isPublished: created.isPublished,
+        isArchived: created.isArchived,
+        isTimed: created.isTimed,
+        durationMinutes: created.durationMinutes,
+        author: created.author,
+        sortOrder: created.sortOrder,
+        hasFlag: true,
+        flagCount: 1,
+        solveCount: 0,
+        createdAt: created.createdAt.toISOString(),
+        updatedAt: created.updatedAt.toISOString(),
+      };
+    }
+
+    const newId = `chal-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+    const newChallenge: DBChallenge = {
+      id: newId,
+      slug,
+      title: data.title.trim(),
+      description: data.description,
+      categoryId: data.categoryId,
+      difficulty: data.difficulty,
+      points: data.points,
+      isPublished: data.isPublished || false,
+      isArchived: data.isArchived || false,
+      isTimed: data.isTimed || false,
+      durationMinutes: data.isTimed ? data.durationMinutes || 30 : null,
+      author: data.author || null,
+      sortOrder: 0,
+      flagHash: hashed,
+      hints: [],
+      createdAt: now,
+      updatedAt: now,
+    };
+    memoryStore.challenges.push(newChallenge);
+    const cat = memoryStore.categories.find((k) => k.id === data.categoryId);
+
+    return {
+      id: newChallenge.id,
+      slug: newChallenge.slug,
+      title: newChallenge.title,
+      description: newChallenge.description,
+      categoryId: newChallenge.categoryId,
+      categoryName: cat?.name || 'General',
+      difficulty: newChallenge.difficulty,
+      points: newChallenge.points,
+      isPublished: newChallenge.isPublished,
+      isArchived: newChallenge.isArchived,
+      isTimed: newChallenge.isTimed,
+      durationMinutes: newChallenge.durationMinutes,
+      author: newChallenge.author,
+      sortOrder: newChallenge.sortOrder,
+      hasFlag: true,
+      flagCount: 1,
+      solveCount: 0,
+      createdAt: now.toISOString(),
+      updatedAt: now.toISOString(),
+    };
+  },
+
+  async updateChallenge(id: string, data: UpdateChallengeRequest): Promise<AdminChallengeDTO> {
+    if (data.points !== undefined && data.points <= 0) {
+      throw new Error('Point value must be greater than 0');
+    }
+    if (
+      data.isTimed &&
+      data.durationMinutes !== undefined &&
+      (data.durationMinutes === null || data.durationMinutes <= 0)
+    ) {
+      throw new Error('Timed challenges must specify a positive duration in minutes');
+    }
+
+    const now = new Date();
+    const hasDb = await checkPrisma();
+    if (hasDb) {
+      const existing = await prisma.challenge.findUnique({ where: { id } });
+      if (!existing) throw new Error('Challenge not found');
+
+      const isTimedFinal = data.isTimed !== undefined ? data.isTimed : existing.isTimed;
+      const durationFinal = isTimedFinal
+        ? data.durationMinutes !== undefined
+          ? data.durationMinutes
+          : existing.durationMinutes
+        : null;
+
+      const updated = await prisma.challenge.update({
+        where: { id },
+        data: {
+          title: data.title !== undefined ? data.title.trim() : undefined,
+          slug: data.slug !== undefined ? data.slug.trim() : undefined,
+          description: data.description,
+          categoryId: data.categoryId,
+          difficulty: data.difficulty,
+          points: data.points,
+          isPublished: data.isPublished,
+          isArchived: data.isArchived,
+          isTimed: data.isTimed,
+          durationMinutes: durationFinal,
+          author: data.author,
+          sortOrder: data.sortOrder,
+        },
+        include: {
+          category: true,
+          flags: true,
+          solves: true,
+        },
+      });
+
+      return {
+        id: updated.id,
+        slug: updated.slug,
+        title: updated.title,
+        description: updated.description,
+        categoryId: updated.categoryId,
+        categoryName: updated.category.name,
+        difficulty: updated.difficulty as Difficulty,
+        points: updated.points,
+        isPublished: updated.isPublished,
+        isArchived: updated.isArchived,
+        isTimed: updated.isTimed,
+        durationMinutes: updated.durationMinutes,
+        author: updated.author,
+        sortOrder: updated.sortOrder,
+        hasFlag: updated.flags.length > 0,
+        flagCount: updated.flags.length,
+        solveCount: updated.solves.length,
+        createdAt: updated.createdAt.toISOString(),
+        updatedAt: updated.updatedAt.toISOString(),
+      };
+    }
+
+    const c = memoryStore.challenges.find((k) => k.id === id);
+    if (!c) throw new Error('Challenge not found');
+
+    if (data.title !== undefined) c.title = data.title.trim();
+    if (data.slug !== undefined) c.slug = data.slug.trim();
+    if (data.description !== undefined) c.description = data.description;
+    if (data.categoryId !== undefined) c.categoryId = data.categoryId;
+    if (data.difficulty !== undefined) c.difficulty = data.difficulty;
+    if (data.points !== undefined) c.points = data.points;
+    if (data.isPublished !== undefined) c.isPublished = data.isPublished;
+    if (data.isArchived !== undefined) c.isArchived = data.isArchived;
+    if (data.isTimed !== undefined) c.isTimed = data.isTimed;
+    if (data.durationMinutes !== undefined) c.durationMinutes = data.durationMinutes;
+    if (data.author !== undefined) c.author = data.author;
+    if (data.sortOrder !== undefined) c.sortOrder = data.sortOrder;
+    c.updatedAt = now;
+
+    const cat = memoryStore.categories.find((k) => k.id === c.categoryId);
+    const chSolves = memoryStore.solves.filter((s) => s.challengeId === c.id);
+
+    return {
+      id: c.id,
+      slug: c.slug,
+      title: c.title,
+      description: c.description,
+      categoryId: c.categoryId,
+      categoryName: cat?.name || 'General',
+      difficulty: c.difficulty,
+      points: c.points,
+      isPublished: c.isPublished,
+      isArchived: c.isArchived,
+      isTimed: c.isTimed,
+      durationMinutes: c.durationMinutes,
+      author: c.author,
+      sortOrder: c.sortOrder,
+      hasFlag: Boolean(c.flagHash),
+      flagCount: c.flagHash ? 1 : 0,
+      solveCount: chSolves.length,
+      createdAt: c.createdAt.toISOString(),
+      updatedAt: c.updatedAt.toISOString(),
+    };
+  },
+
+  async publishChallenge(id: string): Promise<AdminChallengeDTO> {
+    return this.updateChallenge(id, { isPublished: true, isArchived: false });
+  },
+
+  async unpublishChallenge(id: string): Promise<AdminChallengeDTO> {
+    return this.updateChallenge(id, { isPublished: false });
+  },
+
+  async archiveChallenge(id: string): Promise<AdminChallengeDTO> {
+    return this.updateChallenge(id, { isArchived: true });
+  },
+
+  async updateChallengeFlag(
+    id: string,
+    flag: string,
+    isCaseSensitive: boolean = true
+  ): Promise<{ success: boolean; message: string }> {
+    if (!flag || !flag.trim()) {
+      throw new Error('Flag cannot be empty');
+    }
+    const hashed = hashFlag(flag, isCaseSensitive);
+
+    const hasDb = await checkPrisma();
+    if (hasDb) {
+      const existing = await prisma.challenge.findUnique({ where: { id } });
+      if (!existing) throw new Error('Challenge not found');
+
+      const existingFlag = await prisma.flag.findFirst({ where: { challengeId: id } });
+      if (existingFlag) {
+        await prisma.flag.update({
+          where: { id: existingFlag.id },
+          data: { flagHash: hashed, isCaseSensitive },
+        });
+      } else {
+        await prisma.flag.create({
+          data: { challengeId: id, flagHash: hashed, isCaseSensitive },
+        });
+      }
+      return { success: true, message: 'Challenge flag updated successfully' };
+    }
+
+    const c = memoryStore.challenges.find((k) => k.id === id);
+    if (!c) throw new Error('Challenge not found');
+
+    // Historical solves and scores survive flag rotation intact
+    c.flagHash = hashed;
+    c.updatedAt = new Date();
+    return { success: true, message: 'Challenge flag updated successfully' };
+  },
+
+  async deleteChallenge(id: string): Promise<{ success: boolean; message: string }> {
+    const hasDb = await checkPrisma();
+    if (hasDb) {
+      const solvesCount = await prisma.solve.count({ where: { challengeId: id } });
+      const submissionsCount = await prisma.submission.count({ where: { challengeId: id } });
+      const sessionsCount = await prisma.teamChallengeSession.count({ where: { challengeId: id } });
+
+      if (solvesCount > 0 || submissionsCount > 0 || sessionsCount > 0) {
+        throw new Error(
+          'Cannot delete challenge with existing solves, submissions, or active sessions. Please archive it instead.'
+        );
+      }
+
+      await prisma.challenge.delete({ where: { id } });
+      return { success: true, message: 'Challenge deleted successfully' };
+    }
+
+    const chIndex = memoryStore.challenges.findIndex((k) => k.id === id);
+    if (chIndex === -1) throw new Error('Challenge not found');
+
+    const solvesCount = memoryStore.solves.filter((s) => s.challengeId === id).length;
+    let sessionsCount = 0;
+    for (const session of memoryStore.sessions.values()) {
+      if (session.challengeId === id) sessionsCount++;
+    }
+
+    if (solvesCount > 0 || sessionsCount > 0) {
+      throw new Error(
+        'Cannot delete challenge with existing solves, submissions, or active sessions. Please archive it instead.'
+      );
+    }
+
+    memoryStore.challenges.splice(chIndex, 1);
+    return { success: true, message: 'Challenge deleted successfully' };
+  },
 };
+
+function slugify(text: string): string {
+  const slug = text
+    .toLowerCase()
+    .trim()
+    .replace(/[^\w\s-]/g, '')
+    .replace(/[\s_-]+/g, '-')
+    .replace(/^-+|-+$/g, '');
+  return slug || `chal-${Date.now()}`;
+}
