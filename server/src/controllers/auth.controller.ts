@@ -24,6 +24,18 @@ function getSessionCookieOptions(maxAge?: number) {
   };
 }
 
+function getOidcTxCookieOptions(maxAge: number = 15 * 60 * 1000) {
+  const isProd = config.nodeEnv === 'production';
+  return {
+    httpOnly: true,
+    secure: isProd || config.cookieSameSite === 'none',
+    // In production, 'none' allows the browser to include the cookie when following cross-site redirects from the OIDC provider
+    sameSite: (isProd ? 'none' : 'lax') as 'none' | 'lax',
+    path: '/',
+    maxAge,
+  };
+}
+
 export const authController = {
   /**
    * Initiates OIDC Authorization Code Flow with PKCE S256.
@@ -35,8 +47,12 @@ export const authController = {
       const { authorizationUrl, signedTxCookie } =
         await oidcService.createAuthorizationRequest();
 
-      // Bind transaction state to initiating browser via signed HttpOnly cookie
-      res.cookie(getOidcTxCookieName(), signedTxCookie, getSessionCookieOptions(10 * 60 * 1000));
+      // Bind transaction state to initiating browser via signed HttpOnly cookies (with both Host-prefixed and standard fallbacks)
+      const txOptions = getOidcTxCookieOptions(15 * 60 * 1000);
+      res.cookie(getOidcTxCookieName(), signedTxCookie, txOptions);
+      if (getOidcTxCookieName() !== 'oidc_tx') {
+        res.cookie('oidc_tx', signedTxCookie, txOptions);
+      }
 
       if (req.headers.accept?.includes('application/json')) {
         res.json({
@@ -66,16 +82,27 @@ export const authController = {
    * and establishes internal CTF session cookie.
    */
   async oidcCallback(req: Request, res: Response): Promise<void> {
+    const queryState = typeof req.query.state === 'string' ? req.query.state : undefined;
     const rawTxCookie =
       req.cookies?.[getOidcTxCookieName()] ||
       req.cookies?.['__Host-oidc_tx'] ||
       req.cookies?.['oidc_tx'];
-    const tx = oidcService.verifyTransactionCookie(rawTxCookie);
 
-    // Clear transaction cookie immediately upon callback
-    res.clearCookie(getOidcTxCookieName(), getSessionCookieOptions());
-    res.clearCookie('__Host-oidc_tx', getSessionCookieOptions());
-    res.clearCookie('oidc_tx', getSessionCookieOptions());
+    // Verify transaction from cookie OR fallback to cryptographically signed query state
+    let tx = oidcService.verifyTransactionCookie(rawTxCookie);
+    if (!tx && queryState) {
+      tx = oidcService.verifyTransactionCookie(queryState);
+    }
+
+    // Clear transaction cookies immediately upon callback
+    const clearOptions = getSessionCookieOptions();
+    const clearTxOptions = getOidcTxCookieOptions(0);
+    res.clearCookie(getOidcTxCookieName(), clearOptions);
+    res.clearCookie('__Host-oidc_tx', clearOptions);
+    res.clearCookie('oidc_tx', clearOptions);
+    res.clearCookie(getOidcTxCookieName(), clearTxOptions);
+    res.clearCookie('__Host-oidc_tx', clearTxOptions);
+    res.clearCookie('oidc_tx', clearTxOptions);
 
     if (!tx) {
       res.status(400).json({
@@ -195,7 +222,10 @@ export const authController = {
       }
 
       // Redirect browser back to frontend; session is established strictly via HttpOnly cookie
-      res.redirect(config.frontendUrl);
+      const forwardHost = req.get('x-forwarded-host') || req.get('host');
+      const isTrustedHost = forwardHost && (forwardHost.includes('fossclub.tech') || forwardHost.includes('vercel.app'));
+      const targetFrontend = isTrustedHost ? `https://${forwardHost}` : config.frontendUrl;
+      res.redirect(targetFrontend);
     } catch (err: any) {
       const code = err.code || 'OIDC_CALLBACK_FAILED';
       const status =
