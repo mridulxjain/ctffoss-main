@@ -32,7 +32,10 @@ export const config = {
     process.env.VALENFIND_CHALLENGE_URL ||
     'https://ctffoss.vercel.app',
   valenfindVerifySecret:
-    process.env.VALENFIND_VERIFY_SECRET || 'foss-ctf-internal-verification-secret',
+    process.env.LOVENTIA_VERIFY_KEY ||
+    process.env.LOVENTIA_VERIFY_SECRET ||
+    process.env.VALENFIND_VERIFY_SECRET ||
+    'foss-ctf-internal-verification-secret',
   oidcIssuer: process.env.OIDC_ISSUER_URL || process.env.OIDC_ISSUER || 'https://oidc.fossclub.tech',
   oidcClientId: process.env.OIDC_CLIENT_ID || 'ctf',
   oidcClientSecret: process.env.OIDC_CLIENT_SECRET || '',
@@ -66,8 +69,12 @@ export function validateProductionConfig(): void {
     errors.push('FLAG_PEPPER must be set to a secure, unique string in production (cannot use development default).');
   }
 
-  if (!process.env.VALENFIND_VERIFY_SECRET || process.env.VALENFIND_VERIFY_SECRET.trim() === '' || process.env.VALENFIND_VERIFY_SECRET === DEV_DEFAULT_SECRETS.valenfindVerifySecret) {
-    errors.push('VALENFIND_VERIFY_SECRET must be explicitly configured in production.');
+  const verifySecret =
+    process.env.LOVENTIA_VERIFY_KEY ||
+    process.env.LOVENTIA_VERIFY_SECRET ||
+    process.env.VALENFIND_VERIFY_SECRET;
+  if (!verifySecret || verifySecret.trim() === '' || verifySecret === DEV_DEFAULT_SECRETS.valenfindVerifySecret) {
+    errors.push('VALENFIND_VERIFY_SECRET or LOVENTIA_VERIFY_KEY must be explicitly configured in production.');
   }
 
   if (process.env.ENABLE_DEV_AUTH === 'true') {

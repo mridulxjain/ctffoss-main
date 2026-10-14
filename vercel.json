@@ -1,13 +1,14 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
-  "buildCommand": "npm run build:shared && npm run db:generate --workspace=server",
+  "buildCommand": "npm run build:backend",
+  "outputDirectory": "dist",
   "rewrites": [
     {
       "source": "/api/(.*)",
       "destination": "/api"
     },
     {
-      "source": "/(.*)",
+      "source": "/v1/(.*)",
       "destination": "/api"
     }
   ]

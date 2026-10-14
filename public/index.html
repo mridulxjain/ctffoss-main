@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Loventia CTF — Backend API</title>
+  <style>
+    body {
+      background-color: #09090b;
+      color: #e4e4e7;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      margin: 0;
+      padding: 1.5rem;
+      box-sizing: border-box;
+    }
+    .card {
+      background: #141417;
+      border: 1px solid #27272a;
+      border-radius: 12px;
+      padding: 2.5rem;
+      max-width: 520px;
+      width: 100%;
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.6);
+    }
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      background: rgba(16, 185, 129, 0.1);
+      color: #10b981;
+      border: 1px solid rgba(16, 185, 129, 0.3);
+      padding: 0.3rem 0.65rem;
+      border-radius: 9999px;
+      font-size: 0.75rem;
+      font-weight: 700;
+      letter-spacing: 0.05em;
+      margin-bottom: 1.25rem;
+    }
+    .badge-dot {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: #10b981;
+    }
+    h1 {
+      font-size: 1.4rem;
+      font-weight: 700;
+      letter-spacing: -0.02em;
+      margin: 0 0 0.75rem 0;
+      color: #ffffff;
+    }
+    p {
+      color: #a1a1aa;
+      font-size: 0.9rem;
+      line-height: 1.6;
+      margin: 0 0 1.25rem 0;
+    }
+    .endpoint {
+      background: #09090b;
+      border: 1px solid #27272a;
+      border-radius: 6px;
+      padding: 0.75rem 1rem;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-top: 1rem;
+    }
+    .endpoint code {
+      color: #34d399;
+      font-size: 0.85rem;
+    }
+    a {
+      color: #34d399;
+      text-decoration: none;
+      font-size: 0.85rem;
+      font-weight: 600;
+    }
+    a:hover {
+      text-decoration: underline;
+    }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="badge"><span class="badge-dot"></span>SYS.ONLINE</div>
+    <h1>Loventia CTF API</h1>
+    <p>The serverless API backend is operational and handling competition events.</p>
+    <div class="endpoint">
+      <code>GET /api/v1/health</code>
+      <a href="/api/v1/health">Check Status &rarr;</a>
+    </div>
+  </div>
+</body>
+</html>
