@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Navigate } from 'react-router-dom';
 import { api } from '../lib/api';
 import { useAuth } from '../context/AuthContext';
@@ -8,27 +8,27 @@ import type {
   AdminTeamListItemDTO,
 } from '@fossctf/shared';
 import {
-  Shield,
-  Play,
   ExternalLink,
   Copy,
   Zap,
-  RefreshCw,
   CheckCircle2,
   AlertTriangle,
   Clock,
-  Users,
   Edit2,
   Check,
   X,
   Pause,
   RotateCcw,
+  Users,
+  Shield,
+  Activity,
+  Globe,
 } from 'lucide-react';
 
 export const AdminChallengesPage: React.FC = () => {
   const { user } = useAuth();
 
-  // Strict client-side Admin protection: if user is not admin, immediately boot them to /challenges
+  // Strict client-side Admin protection
   if (user && user.role !== 'ADMIN') {
     return <Navigate to="/challenges" replace />;
   }
@@ -37,13 +37,16 @@ export const AdminChallengesPage: React.FC = () => {
   const [competition, setCompetition] = useState<CompetitionConfigDTO | null>(null);
   const [readiness, setReadiness] = useState<CompetitionReadinessSummaryDTO | null>(null);
   const [teams, setTeams] = useState<AdminTeamListItemDTO[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [, setLoading] = useState(true);
   const [copiedUrl, setCopiedUrl] = useState(false);
 
-  // Action states
+  // Action states & synchronous guards
   const [startingCompetition, setStartingCompetition] = useState(false);
+  const startingRef = useRef(false);
   const [resettingCompetition, setResettingCompetition] = useState(false);
+  const resettingRef = useRef(false);
   const [pausingCompetition, setPausingCompetition] = useState(false);
+  const pausingRef = useRef(false);
   const [actionFeedback, setActionFeedback] = useState<{ text: string; isError: boolean } | null>(null);
 
   // Inline team Loventia ID editing
@@ -87,11 +90,13 @@ export const AdminChallengesPage: React.FC = () => {
     }
   };
 
-  // FORCE START: Admin can start the competition at any second — readiness checks are bypassed!
+  // FORCE START: Admin can start the competition at any second
   const handleForceStart = async () => {
-    if (!window.confirm('⚡ Unlock Loventia and START the competition now?\n\nTarget will immediately become active for all participants without requiring squad readiness.')) {
+    if (startingRef.current) return;
+    if (!window.confirm('Unlock Loventia and START the competition now?\n\nTarget will immediately become active for all participants without requiring squad readiness.')) {
       return;
     }
+    startingRef.current = true;
     setStartingCompetition(true);
     setActionFeedback(null);
     try {
@@ -107,15 +112,18 @@ export const AdminChallengesPage: React.FC = () => {
         isError: true,
       });
     } finally {
+      startingRef.current = false;
       setStartingCompetition(false);
     }
   };
 
   // Reset competition state back to PREPARING
   const handleResetToPreparing = async () => {
+    if (resettingRef.current) return;
     if (!window.confirm('Reset competition back to PREPARING state?\n\nThis will lock the participant target gate again until you start it.')) {
       return;
     }
+    resettingRef.current = true;
     setResettingCompetition(true);
     setActionFeedback(null);
     try {
@@ -134,12 +142,15 @@ export const AdminChallengesPage: React.FC = () => {
         isError: true,
       });
     } finally {
+      resettingRef.current = false;
       setResettingCompetition(false);
     }
   };
 
   // Toggle pause
   const handleTogglePause = async () => {
+    if (pausingRef.current) return;
+    pausingRef.current = true;
     const nextPaused = !competition?.isPaused;
     setPausingCompetition(true);
     setActionFeedback(null);
@@ -158,6 +169,7 @@ export const AdminChallengesPage: React.FC = () => {
         isError: true,
       });
     } finally {
+      pausingRef.current = false;
       setPausingCompetition(false);
     }
   };
@@ -194,47 +206,73 @@ export const AdminChallengesPage: React.FC = () => {
   const isPreparing = competition?.state === 'PREPARING';
 
   return (
-    <div className="max-w-5xl mx-auto px-4 sm:px-6 py-8 space-y-8">
-      {/* Top Section Indicator with stickers */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b-2 border-zinc-800 pb-4">
-        <div className="flex items-center gap-2 font-mono text-xs text-zinc-400 uppercase tracking-widest">
-          <span className="text-emerald-400 font-bold">&gt;_ ADMIN TERMINAL</span>
-          <span className="text-zinc-600">//</span>
-          <span>§ 01 &middot; MISSION CONTROL</span>
-          <span className="text-zinc-600">//</span>
-          <span className="text-amber-400 font-bold">LOVENTIA ONLY</span>
-        </div>
-
-        <div className="flex items-center gap-2 flex-wrap">
-          <div className="sticker-tape bg-amber-400 text-black border border-black shadow-[2px_2px_0px_#000]">
-            CLEARANCE: ROOT
+    <div className="max-w-5xl mx-auto px-4 sm:px-6 py-8 space-y-6">
+      {/* Header - Simple and Professional */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-zinc-800">
+        <div className="space-y-1">
+          <div className="flex items-center gap-2 text-xs font-mono text-zinc-500 uppercase tracking-wider">
+            <Shield className="w-3.5 h-3.5 text-emerald-400" />
+            <span>Administration</span>
+            <span>/</span>
+            <span className="text-zinc-300">Competition Management</span>
           </div>
-          <div className="sticker-tape-right bg-emerald-400 text-black border border-black shadow-[2px_2px_0px_#000]">
-            TARGET: ONLINE
-          </div>
+          <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-zinc-100">
+            Loventia Operations Console
+          </h1>
+          <p className="text-xs sm:text-sm text-zinc-400">
+            Monitor target accessibility, control the competition lifecycle, and manage participant squad voucher assignments.
+          </p>
         </div>
       </div>
 
-      {/* Main Page Title Header */}
-      <div className="space-y-2">
-        <div className="flex items-center gap-3">
-          <h1 className="text-3xl sm:text-4xl font-black font-mono tracking-tight text-zinc-100 uppercase">
-            Loventia Mission Control
-          </h1>
+      {/* KPI Overview Row */}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <div className="p-4 rounded-lg bg-zinc-900/60 border border-zinc-800 space-y-1 shadow-sm">
+          <div className="flex items-center justify-between text-xs text-zinc-500 font-medium">
+            <span>Target Status</span>
+            <Globe className="w-4 h-4 text-emerald-400" />
+          </div>
+          <div className="text-xl font-bold text-zinc-100 flex items-center gap-2">
+            <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse motion-reduce:animate-none" />
+            <span>Operational</span>
+          </div>
+          <div className="text-[11px] font-mono text-zinc-500 truncate">{targetUrl}</div>
         </div>
-        <p className="text-sm font-mono text-zinc-400 max-w-2xl">
-          Live competition launch gate and target monitoring for the Loventia voucher breach.
-          Admin can launch the target or force-start the round anytime.
-        </p>
+
+        <div className="p-4 rounded-lg bg-zinc-900/60 border border-zinc-800 space-y-1 shadow-sm">
+          <div className="flex items-center justify-between text-xs text-zinc-500 font-medium">
+            <span>Round State</span>
+            <Activity className="w-4 h-4 text-amber-400" />
+          </div>
+          <div className="text-xl font-bold text-zinc-100">
+            {competition?.state || 'PREPARING'}
+          </div>
+          <div className="text-[11px] font-mono text-zinc-500">
+            {readiness?.readyTeamsCount ?? 0} of {readiness?.totalEligibleTeams ?? 0} squads ready
+          </div>
+        </div>
+
+        <div className="p-4 rounded-lg bg-zinc-900/60 border border-zinc-800 space-y-1 shadow-sm">
+          <div className="flex items-center justify-between text-xs text-zinc-500 font-medium">
+            <span>Enrolled Squads</span>
+            <Users className="w-4 h-4 text-purple-400" />
+          </div>
+          <div className="text-xl font-bold text-zinc-100">
+            {teams.length} Teams
+          </div>
+          <div className="text-[11px] font-mono text-zinc-500">
+            Central identity synced
+          </div>
+        </div>
       </div>
 
       {/* Feedback Banner */}
       {actionFeedback && (
         <div
-          className={`p-4 rounded-none border-2 font-mono text-xs flex items-center justify-between gap-3 ${
+          className={`p-3.5 rounded-lg border text-xs font-mono flex items-center justify-between gap-3 shadow-sm ${
             actionFeedback.isError
-              ? 'bg-rose-950/40 border-rose-500 text-rose-300 shadow-[3px_3px_0px_#f43f5e]'
-              : 'bg-emerald-950/40 border-emerald-500 text-emerald-300 shadow-[3px_3px_0px_#10b981]'
+              ? 'bg-rose-950/40 border-rose-500/40 text-rose-300'
+              : 'bg-emerald-950/40 border-emerald-500/40 text-emerald-300'
           }`}
         >
           <div className="flex items-center gap-2">
@@ -246,204 +284,169 @@ export const AdminChallengesPage: React.FC = () => {
             <span>{actionFeedback.text}</span>
           </div>
           <button
+            type="button"
             onClick={() => setActionFeedback(null)}
             className="text-zinc-400 hover:text-zinc-100 font-mono text-xs"
           >
-            [CLOSE]
+            [Close]
           </button>
         </div>
       )}
 
-      {/* SECTION 1: THE TARGET COMMAND BOX */}
-      <section className="tech-corner-box border-2 border-emerald-500 bg-zinc-950 p-6 sm:p-7 shadow-[5px_5px_0px_#10b981] space-y-5">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-zinc-800 pb-4">
-          <div className="space-y-1">
-            <div className="flex items-center gap-2">
-              <span className="text-xs font-mono font-bold text-emerald-400 uppercase tracking-wider">
-                § 01 &middot; TARGET SYSTEM DEPLOYMENT
-              </span>
-              <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-emerald-950 text-emerald-300 border border-emerald-800 font-bold">
-                PERMANENT ACCESS
-              </span>
-            </div>
-            <h2 className="text-lg font-bold font-mono text-zinc-100">
-              Loventia Production Instance
-            </h2>
+      {/* SECTION 1: Target System Endpoint */}
+      <section className="rounded-lg border border-zinc-800 bg-zinc-900/40 p-5 space-y-4 shadow-sm">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-zinc-800/80 pb-3">
+          <div>
+            <h2 className="text-sm font-semibold text-zinc-100">Target Application Endpoint</h2>
+            <p className="text-xs text-zinc-400">
+              The live challenge target service hosted on Vercel. Admin has permanent access.
+            </p>
           </div>
-
-          <div className="flex items-center gap-2">
-            <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse" />
-            <span className="text-xs font-mono font-bold text-emerald-400 uppercase">
-              Target Reachable
-            </span>
-          </div>
+          <span className="text-xs font-mono text-emerald-400 bg-emerald-950/50 border border-emerald-800/60 px-2 py-0.5 rounded-md self-start sm:self-auto font-medium">
+            Active Instance
+          </span>
         </div>
 
-        {/* Target URL Display & Actions */}
-        <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-4 p-4 bg-zinc-900/90 border-2 border-zinc-800">
-          <div className="space-y-1 min-w-0">
-            <span className="text-[10px] font-mono uppercase text-zinc-500 block">
-              Official Target Application URL:
-            </span>
-            <div className="font-mono text-sm sm:text-base font-bold text-emerald-300 truncate select-all">
-              {targetUrl}
-            </div>
+        <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 p-3.5 rounded-md bg-zinc-950 border border-zinc-800">
+          <div className="font-mono text-xs sm:text-sm text-emerald-300 select-all truncate">
+            {targetUrl}
           </div>
 
-          <div className="flex items-center gap-2.5 shrink-0">
+          <div className="flex items-center gap-2 shrink-0">
             <button
+              type="button"
               onClick={handleCopyUrl}
-              className="px-3.5 py-2.5 text-xs font-mono font-bold uppercase transition-all bg-zinc-800 hover:bg-zinc-700 text-zinc-200 border-2 border-zinc-700 flex items-center gap-1.5 shadow-[2px_2px_0px_#000]"
+              className="px-3 py-1.5 text-xs font-mono font-medium rounded-md transition-colors bg-zinc-800 hover:bg-zinc-750 text-zinc-200 border border-zinc-700 flex items-center gap-1.5"
             >
               {copiedUrl ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
-              <span>{copiedUrl ? 'Copied!' : 'Copy URL'}</span>
+              <span>{copiedUrl ? 'Copied' : 'Copy URL'}</span>
             </button>
 
             <a
               href={targetUrl}
               target="_blank"
               rel="noopener noreferrer"
-              className="px-4 py-2.5 text-xs font-mono font-black uppercase transition-all bg-emerald-500 hover:bg-emerald-400 text-black border-2 border-emerald-400 flex items-center gap-2 shadow-[3px_3px_0px_#000] hover:shadow-[4px_4px_0px_#000] hover:-translate-x-0.5 hover:-translate-y-0.5"
+              className="px-3.5 py-1.5 text-xs font-mono font-semibold rounded-md transition-colors bg-emerald-600 hover:bg-emerald-500 text-white flex items-center gap-1.5 shadow-sm"
             >
-              <ExternalLink className="w-4 h-4" />
-              <span>Launch Target ↗</span>
+              <span>Launch Target</span>
+              <ExternalLink className="w-3.5 h-3.5" />
             </a>
           </div>
         </div>
-
-        <p className="text-xs font-mono text-zinc-400">
-          Target link is permanently unlocked for administrators. Participants unlock the target automatically once the round starts.
-        </p>
       </section>
 
-      {/* SECTION 2: COMPETITION START / LIFECYCLE GATE */}
-      <section className="tech-corner-box border-2 border-amber-500 bg-zinc-950 p-6 sm:p-7 shadow-[5px_5px_0px_#f59e0b] space-y-6">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-zinc-800 pb-4">
-          <div className="space-y-1">
-            <div className="flex items-center gap-2">
-              <span className="text-xs font-mono font-bold text-amber-400 uppercase tracking-wider">
-                § 02 &middot; COMPETITION LAUNCH GATE
-              </span>
-              <span
-                className={`text-[10px] font-mono px-2 py-0.5 font-bold uppercase border ${
-                  isLive
-                    ? 'bg-emerald-950 text-emerald-300 border-emerald-700'
-                    : isPreparing
-                    ? 'bg-amber-950 text-amber-300 border-amber-700'
-                    : 'bg-zinc-800 text-zinc-300 border-zinc-700'
-                }`}
-              >
-                {competition?.state || 'PREPARING'}
-              </span>
-            </div>
-            <h2 className="text-lg font-bold font-mono text-zinc-100">
-              Synchronized Launch Control
-            </h2>
+      {/* SECTION 2: Competition Launch & Lifecycle Gate */}
+      <section className="rounded-lg border border-zinc-800 bg-zinc-900/40 p-5 space-y-4 shadow-sm">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-zinc-800/80 pb-3">
+          <div>
+            <h2 className="text-sm font-semibold text-zinc-100">Competition Lifecycle Control</h2>
+            <p className="text-xs text-zinc-400">
+              Control round status, launch the competition for participants, or pause flag submissions.
+            </p>
           </div>
-
-          {/* Readiness tally summary */}
-          <div className="text-xs font-mono text-zinc-400">
-            Squads Ready: <strong className="text-zinc-100">{readiness?.readyTeamsCount ?? 0}</strong> of{' '}
-            <strong className="text-zinc-100">{readiness?.totalEligibleTeams ?? 0}</strong>
-          </div>
+          <span
+            className={`text-xs font-mono px-2 py-0.5 rounded-md font-semibold self-start sm:self-auto border ${
+              isLive
+                ? 'bg-emerald-950/60 text-emerald-300 border-emerald-700/60'
+                : isPreparing
+                ? 'bg-amber-950/60 text-amber-300 border-amber-700/60'
+                : 'bg-zinc-800 text-zinc-300 border-zinc-700'
+            }`}
+          >
+            {competition?.state || 'PREPARING'}
+          </span>
         </div>
 
-        {/* Dynamic State Control Actions */}
-        <div className="space-y-4">
+        <div className="p-4 rounded-md bg-zinc-950/60 border border-zinc-800/80">
           {isPreparing ? (
-            <div className="p-5 bg-amber-950/20 border-2 border-amber-500/60 space-y-4">
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                <div className="space-y-1">
-                  <div className="font-mono text-sm font-bold text-amber-300">
-                    Target Locked For Participants (PREPARING)
-                  </div>
-                  <p className="text-xs font-mono text-zinc-400 max-w-lg">
-                    Admin can start the round at any moment. Squad readiness check is completely bypassed when you force start.
-                  </p>
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+              <div className="space-y-1">
+                <div className="text-xs font-semibold text-zinc-200">
+                  Target is currently locked for participants
                 </div>
-
-                <button
-                  onClick={handleForceStart}
-                  disabled={startingCompetition}
-                  className="px-6 py-3.5 text-sm font-mono font-black uppercase tracking-wider bg-emerald-500 hover:bg-emerald-400 text-black border-2 border-emerald-400 shadow-[4px_4px_0px_#000] hover:shadow-[5px_5px_0px_#000] hover:-translate-x-0.5 hover:-translate-y-0.5 transition-all flex items-center justify-center gap-2.5 shrink-0 disabled:opacity-50"
-                >
-                  <Zap className="w-4 h-4 fill-black" />
-                  <span>{startingCompetition ? 'Starting Round...' : '⚡ FORCE START COMPETITION NOW'}</span>
-                </button>
+                <p className="text-xs text-zinc-400 max-w-lg leading-relaxed">
+                  Starting the round immediately reveals the target endpoint and enables timer tracking and flag submission.
+                </p>
               </div>
+
+              <button
+                type="button"
+                onClick={handleForceStart}
+                disabled={startingCompetition}
+                className="px-4 py-2 text-xs font-mono font-semibold rounded-md bg-emerald-600 hover:bg-emerald-500 active:bg-emerald-700 text-white shadow-sm transition-colors flex items-center justify-center gap-2 shrink-0 disabled:opacity-50"
+              >
+                <Zap className="w-3.5 h-3.5 fill-current" />
+                <span>{startingCompetition ? 'Starting Round...' : 'Start Competition'}</span>
+              </button>
             </div>
           ) : (
-            <div className="p-5 bg-emerald-950/20 border-2 border-emerald-500/60 space-y-4">
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                <div className="space-y-1">
-                  <div className="font-mono text-sm font-bold text-emerald-300 flex items-center gap-2">
-                    <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse" />
-                    <span>ROUND IS LIVE &middot; LOVENTIA UNLOCKED</span>
-                  </div>
-                  <p className="text-xs font-mono text-zinc-400">
-                    All participants can view the target link and submit flags. Elapsed timer is running.
-                  </p>
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+              <div className="space-y-1">
+                <div className="text-xs font-semibold text-emerald-400 flex items-center gap-2">
+                  <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse motion-reduce:animate-none" />
+                  <span>Competition is Live</span>
                 </div>
+                <p className="text-xs text-zinc-400">
+                  Target link is active for all participants and elapsed timers are synchronized.
+                </p>
+              </div>
 
-                <div className="flex items-center gap-2.5 shrink-0 flex-wrap">
-                  <button
-                    onClick={handleTogglePause}
-                    disabled={pausingCompetition}
-                    className="px-4 py-2.5 text-xs font-mono font-bold uppercase bg-zinc-800 hover:bg-zinc-700 text-amber-300 border-2 border-amber-500/50 flex items-center gap-1.5 shadow-[2px_2px_0px_#000] disabled:opacity-50"
-                  >
-                    <Pause className="w-3.5 h-3.5" />
-                    <span>{competition?.isPaused ? 'Resume Round' : 'Pause Round'}</span>
-                  </button>
+              <div className="flex items-center gap-2 shrink-0">
+                <button
+                  type="button"
+                  onClick={handleTogglePause}
+                  disabled={pausingCompetition}
+                  className="px-3 py-1.5 text-xs font-mono font-medium rounded-md bg-zinc-800 hover:bg-zinc-750 text-amber-300 border border-amber-500/40 flex items-center gap-1.5 shadow-sm disabled:opacity-50 transition-colors"
+                >
+                  <Pause className="w-3.5 h-3.5" />
+                  <span>{competition?.isPaused ? 'Resume Round' : 'Pause Round'}</span>
+                </button>
 
-                  <button
-                    onClick={handleResetToPreparing}
-                    disabled={resettingCompetition}
-                    className="px-4 py-2.5 text-xs font-mono font-bold uppercase bg-zinc-900 hover:bg-zinc-800 text-rose-300 border-2 border-rose-500/50 flex items-center gap-1.5 shadow-[2px_2px_0px_#000] disabled:opacity-50"
-                  >
-                    <RotateCcw className="w-3.5 h-3.5" />
-                    <span>Reset to Preparing</span>
-                  </button>
-                </div>
+                <button
+                  type="button"
+                  onClick={handleResetToPreparing}
+                  disabled={resettingCompetition}
+                  className="px-3 py-1.5 text-xs font-mono font-medium rounded-md bg-zinc-900 hover:bg-zinc-850 text-rose-300 border border-rose-500/40 flex items-center gap-1.5 shadow-sm disabled:opacity-50 transition-colors"
+                >
+                  <RotateCcw className="w-3.5 h-3.5" />
+                  <span>Reset to Preparing</span>
+                </button>
               </div>
             </div>
           )}
         </div>
       </section>
 
-      {/* SECTION 3: SQUAD ROSTER & LOVENTIA SECRETS MONITOR */}
-      <section className="tech-corner-box border-2 border-zinc-800 bg-zinc-950 p-6 sm:p-7 shadow-[5px_5px_0px_#27272a] space-y-5">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-zinc-800 pb-4">
-          <div className="space-y-1">
-            <span className="text-xs font-mono font-bold text-zinc-400 uppercase tracking-wider">
-              § 03 &middot; SQUAD TELEMETRY & VOUCHER MAPPINGS
-            </span>
-            <h2 className="text-lg font-bold font-mono text-zinc-100">
-              Participating Teams Monitor
-            </h2>
+      {/* SECTION 3: Participating Squads & Voucher Mappings */}
+      <section className="rounded-lg border border-zinc-800 bg-zinc-900/40 p-5 space-y-4 shadow-sm">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-zinc-800/80 pb-3">
+          <div>
+            <h2 className="text-sm font-semibold text-zinc-100">Squad Roster & Voucher Keys</h2>
+            <p className="text-xs text-zinc-400">
+              Manage team custom Loventia voucher IDs and monitor real-time attempt progress.
+            </p>
           </div>
-
-          <div className="text-xs font-mono text-zinc-400">
-            Registered Squads: <strong className="text-emerald-400 font-bold">{teams.length}</strong>
-          </div>
+          <span className="text-xs font-mono text-zinc-400">
+            Total Squads: <strong className="text-zinc-200">{teams.length}</strong>
+          </span>
         </div>
 
-        {/* Clean Squad Table */}
-        <div className="overflow-x-auto border-2 border-zinc-800">
+        <div className="overflow-x-auto rounded-md border border-zinc-800">
           <table className="w-full text-left font-mono text-xs">
-            <thead className="bg-zinc-900 border-b-2 border-zinc-800 text-zinc-400 uppercase text-[11px]">
+            <thead className="bg-zinc-900/80 border-b border-zinc-800 text-zinc-400 text-[11px] uppercase">
               <tr>
-                <th className="py-3 px-4">Squad Name</th>
-                <th className="py-3 px-4">Members</th>
-                <th className="py-3 px-4">Loventia Voucher Key</th>
-                <th className="py-3 px-4">Readiness</th>
-                <th className="py-3 px-4 text-right">Status</th>
+                <th className="py-2.5 px-3.5">Squad Name</th>
+                <th className="py-2.5 px-3.5">Members</th>
+                <th className="py-2.5 px-3.5">Loventia Voucher Key</th>
+                <th className="py-2.5 px-3.5">Readiness</th>
+                <th className="py-2.5 px-3.5 text-right">Status</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-zinc-800 bg-zinc-950/60">
+            <tbody className="divide-y divide-zinc-800/60 bg-zinc-950/60">
               {teams.length === 0 ? (
                 <tr>
-                  <td colSpan={5} className="py-8 text-center text-zinc-500">
-                    No teams registered yet.
+                  <td colSpan={5} className="py-6 text-center text-zinc-500">
+                    No teams registered in system.
                   </td>
                 </tr>
               ) : (
@@ -453,13 +456,13 @@ export const AdminChallengesPage: React.FC = () => {
 
                   return (
                     <tr key={t.id} className="hover:bg-zinc-900/40 transition-colors">
-                      <td className="py-3 px-4 font-bold text-zinc-100">
+                      <td className="py-2.5 px-3.5 font-semibold text-zinc-100">
                         {t.name}
                       </td>
-                      <td className="py-3 px-4 text-zinc-400">
+                      <td className="py-2.5 px-3.5 text-zinc-400">
                         {t.membersCount ?? 0} members
                       </td>
-                      <td className="py-3 px-4">
+                      <td className="py-2.5 px-3.5">
                         {isEditing ? (
                           <div className="flex items-center gap-1.5">
                             <input
@@ -467,20 +470,22 @@ export const AdminChallengesPage: React.FC = () => {
                               value={editValenfindId}
                               onChange={(e) => setEditValenfindId(e.target.value)}
                               placeholder="e.g. byte_bandits_vip"
-                              className="px-2 py-1 bg-zinc-900 border border-emerald-500 text-xs text-zinc-100 font-mono w-44 focus:outline-none"
+                              className="px-2 py-1 bg-zinc-900 border border-emerald-500 text-xs text-zinc-100 font-mono w-44 rounded focus:outline-none"
                               autoFocus
                             />
                             <button
+                              type="button"
                               onClick={() => handleSaveTeamMapping(t.id)}
                               disabled={savingTeamId === t.id}
-                              className="p-1 bg-emerald-600 hover:bg-emerald-500 text-white"
+                              className="p-1 rounded bg-emerald-600 hover:bg-emerald-500 text-white"
                               title="Save"
                             >
                               <Check className="w-3.5 h-3.5" />
                             </button>
                             <button
+                              type="button"
                               onClick={() => setEditingTeamId(null)}
-                              className="p-1 bg-zinc-800 hover:bg-zinc-700 text-zinc-400"
+                              className="p-1 rounded bg-zinc-800 hover:bg-zinc-700 text-zinc-400"
                               title="Cancel"
                             >
                               <X className="w-3.5 h-3.5" />
@@ -488,10 +493,11 @@ export const AdminChallengesPage: React.FC = () => {
                           </div>
                         ) : (
                           <div className="flex items-center gap-2 group">
-                            <span className="font-mono text-emerald-400">
+                            <span className="font-mono text-emerald-400 text-xs">
                               {t.valenfindTeamId || <span className="text-zinc-600 italic">auto-generated</span>}
                             </span>
                             <button
+                              type="button"
                               onClick={() => {
                                 setEditingTeamId(t.id);
                                 setEditValenfindId(t.valenfindTeamId || '');
@@ -504,29 +510,29 @@ export const AdminChallengesPage: React.FC = () => {
                           </div>
                         )}
                       </td>
-                      <td className="py-3 px-4">
+                      <td className="py-2.5 px-3.5">
                         <span
-                          className={`inline-block px-2 py-0.5 text-[10px] font-bold uppercase border ${
+                          className={`inline-block px-2 py-0.5 text-[10px] rounded font-semibold uppercase border ${
                             isReady
-                              ? 'bg-emerald-950/60 text-emerald-300 border-emerald-800'
+                              ? 'bg-emerald-950/60 text-emerald-300 border-emerald-800/60'
                               : 'bg-zinc-900 text-zinc-400 border-zinc-800'
                           }`}
                         >
                           {isReady ? 'READY' : 'PREPARING'}
                         </span>
                       </td>
-                      <td className="py-3 px-4 text-right">
+                      <td className="py-2.5 px-3.5 text-right">
                         {!isCompStarted ? (
                           <span className="text-zinc-500 font-mono text-[11px] uppercase tracking-wider">
                             STAGING
                           </span>
                         ) : t.isSolved || t.attemptStatus === 'COMPLETED' ? (
-                          <span className="inline-flex items-center gap-1 text-emerald-400 font-bold">
+                          <span className="inline-flex items-center gap-1 text-emerald-400 font-semibold text-xs">
                             <CheckCircle2 className="w-3.5 h-3.5" />
                             <span>SOLVED</span>
                           </span>
                         ) : t.attemptStatus === 'IN_PROGRESS' ? (
-                          <span className="inline-flex items-center gap-1 text-amber-400 font-bold">
+                          <span className="inline-flex items-center gap-1 text-amber-400 font-semibold text-xs">
                             <Clock className="w-3.5 h-3.5" />
                             <span>ATTEMPTING</span>
                           </span>

@@ -1,12 +1,13 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
+import { ExternalLink } from 'lucide-react';
 
 export const Footer: React.FC = () => {
   return (
-    <footer className="border-t border-zinc-800 bg-[#070709] text-zinc-500 text-xs py-6 mt-auto">
+    <footer className="border-t border-zinc-800/80 bg-[#09090b] text-zinc-500 text-xs py-6 mt-auto">
       <div className="max-w-6xl mx-auto px-4 sm:px-6 flex flex-col sm:flex-row items-center justify-between gap-4 font-mono">
         <div className="flex items-center gap-2 text-xs text-zinc-400">
-          <span className="font-bold text-zinc-200 uppercase tracking-wider">UFC_CTF</span>
+          <span className="font-semibold text-zinc-200 uppercase tracking-wider">UFC_CTF</span>
           <span className="text-zinc-700">&middot;</span>
           <span>USAR FOSS Club</span>
         </div>
@@ -25,9 +26,10 @@ export const Footer: React.FC = () => {
             href="https://fossclub.tech"
             target="_blank"
             rel="noopener noreferrer"
-            className="text-zinc-500 hover:text-emerald-400 transition-colors"
+            className="inline-flex items-center gap-1.5 text-zinc-500 hover:text-emerald-400 transition-colors"
           >
-            fossclub.tech ↗
+            <span>fossclub.tech</span>
+            <ExternalLink className="w-3 h-3" />
           </a>
         </div>
       </div>
