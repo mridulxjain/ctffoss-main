@@ -99,55 +99,35 @@ button:focus-visible {
   box-shadow: 3px 3px 0px #000;
 }
 
-/* 3D Perspective Mechanical Keyboard Keycap (POV angled) */
-.keycap-3d {
-  position: relative;
-  width: 36px;
-  height: 36px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 7px;
-  background: linear-gradient(135deg, #27272a 0%, #1f1f23 50%, #18181b 100%);
-  border: 1px solid #3f3f46;
-  transform: perspective(280px) rotateX(20deg) rotateY(-18deg) rotateZ(3deg);
-  transform-style: preserve-3d;
-  box-shadow: 
-    -2px 3px 0 #18181b,
-    -4px 5px 0 #0f0f11,
-    -5px 7px 0 #070709,
-    -6px 9px 12px rgba(0, 0, 0, 0.7),
-    inset 1px 1px 0 rgba(255, 255, 255, 0.25),
-    inset -1px -1px 0 rgba(0, 0, 0, 0.4);
-  transition: transform 0.15s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.15s ease, border-color 0.15s ease;
-  user-select: none;
-}
-.group:hover .keycap-3d,
-.keycap-3d:hover {
-  transform: perspective(280px) rotateX(16deg) rotateY(-14deg) rotateZ(2deg) translateY(-1px);
-  border-color: #10b981;
-  box-shadow: 
-    -2px 4px 0 #18181b,
-    -4px 6px 0 #0f0f11,
-    -5px 8px 0 #070709,
-    -7px 11px 16px rgba(16, 185, 129, 0.25),
-    inset 1px 1px 0 rgba(255, 255, 255, 0.35);
-}
-.group:active .keycap-3d,
-.keycap-3d:active {
-  transform: perspective(280px) rotateX(12deg) rotateY(-10deg) rotateZ(1deg) translate(-2px, 3px);
-  box-shadow: 
-    -1px 1px 0 #18181b,
-    -1px 2px 0 #0f0f11,
-    -2px 3px 6px rgba(0, 0, 0, 0.6),
-    inset 1px 1px 0 rgba(255, 255, 255, 0.1);
-}
-
 /* Refined tech card containers */
 .tech-corner-box {
   position: relative;
   border-radius: 0.75rem;
   transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+/* Spark Loader 3-Spark Scale Animation */
+@keyframes spark-scale-pulse {
+  0%, 100% {
+    transform: scale(0.45);
+    opacity: 0.35;
+  }
+  50% {
+    transform: scale(1.25);
+    opacity: 1;
+  }
+}
+
+.animate-spark-1 {
+  animation: spark-scale-pulse 0.9s ease-in-out infinite;
+}
+
+.animate-spark-2 {
+  animation: spark-scale-pulse 0.9s ease-in-out infinite 0.2s;
+}
+
+.animate-spark-3 {
+  animation: spark-scale-pulse 0.9s ease-in-out infinite 0.4s;
 }
 
 /* Accessibility: Respect prefers-reduced-motion */
@@ -162,7 +142,10 @@ button:focus-visible {
   }
   .sticker-tape,
   .sticker-tape-right,
-  .keycap-3d {
+  .animate-spark-1,
+  .animate-spark-2,
+  .animate-spark-3 {
+    animation: none !important;
     transform: none !important;
   }
 }

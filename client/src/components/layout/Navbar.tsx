@@ -16,6 +16,7 @@ import { useAuth } from '../../context/AuthContext';
 import { api, getLoginUrl } from '../../lib/api';
 import type { Role, CompetitionConfigDTO } from '@fossctf/shared';
 import { KeycapLogo } from '../common/KeycapLogo';
+import { SparkLoader } from '../common/SparkLoader';
 
 interface DevPersonaGroup {
   group: string;
@@ -74,7 +75,7 @@ const DEV_PERSONA_GROUPS: DevPersonaGroup[] = [
 ];
 
 export const Navbar: React.FC = () => {
-  const { user, team, loginDev, logout } = useAuth();
+  const { user, team, isLoading, loginDev, logout } = useAuth();
   const location = useLocation();
   const navigate = useNavigate();
 
@@ -203,7 +204,7 @@ export const Navbar: React.FC = () => {
         <div className="max-w-6xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between gap-6">
           {/* Left: Brand + Desktop Nav */}
           <div className="flex items-center gap-6 lg:gap-8 min-w-0">
-            {/* Logo / Brand with 3D Perspective Mechanical Keycap + Flag */}
+            {/* Logo / Brand with Neobrutal Clickable Keycap Button */}
             <Link
               to="/challenges"
               className="flex items-center gap-3 group shrink-0"
@@ -249,19 +250,19 @@ export const Navbar: React.FC = () => {
                 <button
                   type="button"
                   onClick={() => setDevDropdownOpen(!devDropdownOpen)}
-                  className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-md bg-zinc-900/90 border border-zinc-800 hover:border-zinc-700 text-xs font-mono text-zinc-300 hover:text-zinc-100 transition-colors shadow-sm"
+                  className="flex items-center gap-1.5 px-2.5 py-1.5 bg-zinc-900 border-2 border-black shadow-[2px_2px_0px_#000] text-xs font-mono font-bold text-zinc-300 hover:text-zinc-100 hover:translate-x-[-1px] hover:translate-y-[-1px] hover:shadow-[3px_3px_0px_#000] active:translate-x-[1px] active:translate-y-[1px] active:shadow-none transition-all select-none"
                   title="Switch local dev account"
                   aria-expanded={devDropdownOpen}
                   aria-haspopup="true"
                 >
-                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse motion-reduce:animate-none" />
-                  <span className="truncate max-w-[90px] sm:max-w-[120px] font-medium">
-                    {user ? user.username : 'Dev Auth'}
+                  <span className="w-1.5 h-1.5 bg-emerald-400 animate-pulse motion-reduce:animate-none" />
+                  <span className="truncate max-w-[90px] sm:max-w-[120px]">
+                    {user ? user.username : 'DEV AUTH'}
                   </span>
-                  <span className="text-[9px] px-1 py-0.2 rounded font-mono font-semibold bg-amber-500/10 text-amber-400 border border-amber-500/20">
+                  <span className="text-[9px] px-1 py-0.2 font-mono font-black bg-amber-400 text-black border border-black shadow-[1px_1px_0px_#000]">
                     DEV
                   </span>
-                  <ChevronDown className="w-3 h-3 text-zinc-500" />
+                  <ChevronDown className="w-3 h-3 text-zinc-400" />
                 </button>
 
                 {devDropdownOpen && (
@@ -270,7 +271,7 @@ export const Navbar: React.FC = () => {
                       className="fixed inset-0 z-30"
                       onClick={() => setDevDropdownOpen(false)}
                     />
-                    <div className="absolute right-0 mt-2 w-64 rounded-lg bg-zinc-900 border border-zinc-800 py-1.5 shadow-2xl z-40 text-xs max-h-[380px] overflow-y-auto">
+                    <div className="absolute right-0 mt-2 w-64 bg-zinc-900 border-2 border-black py-1.5 shadow-[4px_4px_0px_#000] z-40 text-xs max-h-[380px] overflow-y-auto">
                       <div className="px-3 py-1.5 text-[10px] font-mono uppercase tracking-wider text-zinc-400 border-b border-zinc-800 flex items-center justify-between">
                         <span>Dev Test Personas</span>
                         <span className="text-amber-400 font-medium">16 Accounts</span>
@@ -309,31 +310,31 @@ export const Navbar: React.FC = () => {
 
             {/* Team Identity badge */}
             {team && (
-              <div className="hidden lg:flex items-center gap-2 px-2.5 py-1.5 rounded-md bg-zinc-900/60 border border-zinc-800 text-xs text-zinc-300 font-mono">
+              <div className="hidden lg:flex items-center gap-2 px-2.5 py-1.5 bg-zinc-900 border-2 border-black shadow-[2px_2px_0px_#000] text-xs text-zinc-300 font-mono font-bold uppercase">
                 <Users className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
-                <span className="truncate max-w-[120px] text-zinc-200 font-medium">{team.name}</span>
+                <span className="truncate max-w-[120px] text-zinc-200">{team.name}</span>
               </div>
             )}
 
-            {/* User Profile / Logout OR Sign-In Button */}
+            {/* User Profile / Logout OR Sign-In Button (Neobrutalism) */}
             {user ? (
               <div className="flex items-center gap-2">
-                <div className="flex items-center gap-2 px-2.5 py-1 rounded-md bg-zinc-900/80 border border-zinc-800">
+                <div className="flex items-center gap-2 px-2.5 sm:px-3 py-1.5 bg-zinc-900 border-2 border-black shadow-[2px_2px_0px_#000]">
                   {user.avatarUrl ? (
                     <img
                       src={user.avatarUrl}
                       alt={user.username}
-                      className="w-5 h-5 rounded-full border border-emerald-500/40 object-cover"
+                      className="w-5 h-5 rounded-none border border-emerald-400 object-cover"
                       onError={(e) => {
                         (e.target as HTMLElement).style.display = 'none';
                       }}
                     />
                   ) : (
-                    <div className="w-5 h-5 rounded-full bg-emerald-950/80 border border-emerald-500/40 flex items-center justify-center font-mono text-[9px] font-bold text-emerald-400">
+                    <div className="w-5 h-5 bg-emerald-400 border border-black flex items-center justify-center font-mono text-[10px] font-black text-black">
                       {user.username.slice(0, 2).toUpperCase()}
                     </div>
                   )}
-                  <span className="font-mono text-xs text-zinc-200 font-medium max-w-[100px] truncate">
+                  <span className="font-mono text-xs text-zinc-100 font-bold max-w-[100px] sm:max-w-[130px] truncate uppercase tracking-wider">
                     {user.username}
                   </span>
                 </div>
@@ -342,12 +343,23 @@ export const Navbar: React.FC = () => {
                   onClick={() => logout()}
                   title="Sign out"
                   aria-label="Sign out"
-                  className="p-1.5 rounded-md text-zinc-400 hover:text-rose-400 hover:bg-zinc-800/60 border border-zinc-800 hover:border-zinc-700 transition-colors"
+                  className="flex items-center gap-1.5 px-2.5 py-1.5 bg-zinc-900 hover:bg-rose-500 text-zinc-300 hover:text-black border-2 border-black font-mono font-black text-xs uppercase shadow-[2px_2px_0px_#000] hover:translate-x-[-1px] hover:translate-y-[-1px] hover:shadow-[3px_3px_0px_#000] active:translate-x-[1px] active:translate-y-[1px] active:shadow-none transition-all"
                 >
-                  <LogOut className="w-3.5 h-3.5" />
+                  <LogOut className="w-3.5 h-3.5 stroke-[2.5]" />
+                  <span className="hidden sm:inline">LOGOUT</span>
                 </button>
               </div>
+            ) : isLoading ? (
+              /* Verification Skeleton with Spark Loader */
+              <div
+                className="flex items-center gap-2.5 px-3 py-1.5 bg-zinc-900 border-2 border-black shadow-[2px_2px_0px_#000] font-mono text-xs font-bold text-zinc-300 uppercase select-none"
+                aria-label="Verifying authentication session"
+              >
+                <SparkLoader sparkClassName="text-emerald-400" />
+                <span>SYNCING...</span>
+              </div>
             ) : (
+              /* Neobrutalist Sign In Button with Spark Loader */
               <button
                 type="button"
                 onClick={handleSignIn}
@@ -355,23 +367,18 @@ export const Navbar: React.FC = () => {
                 disabled={isAuthenticating}
                 aria-busy={isAuthenticating}
                 aria-label={isAuthenticating ? 'Authenticating sign in request' : 'Sign In'}
-                className="relative inline-flex items-center justify-center min-w-[96px] sm:min-w-[108px] h-8 sm:h-9 px-3.5 sm:px-4 rounded-md bg-emerald-600 hover:bg-emerald-500 active:bg-emerald-700 disabled:bg-emerald-800/70 disabled:cursor-not-allowed text-white text-xs font-medium transition-all duration-150 shadow-sm focus-visible:ring-2 focus-visible:ring-emerald-400/50"
+                className="relative inline-flex items-center justify-center gap-2 h-9 px-4 bg-emerald-400 hover:bg-emerald-300 active:bg-emerald-500 disabled:bg-amber-400 text-black border-2 border-black shadow-[3px_3px_0px_#000] hover:translate-x-[-1px] hover:translate-y-[-1px] hover:shadow-[4px_4px_0px_#000] active:translate-x-[2px] active:translate-y-[2px] active:shadow-[1px_1px_0px_#000] font-mono font-black text-xs sm:text-sm uppercase tracking-wider transition-all select-none disabled:cursor-wait"
               >
                 {isAuthenticating ? (
-                  <span className="flex items-center gap-1.5 font-mono text-xs">
-                    <span
-                      className="w-3.5 h-3.5 rounded-full border-2 border-white/30 border-t-white animate-spin motion-reduce:animate-none shrink-0"
-                      aria-hidden="true"
-                    />
-                    <span>Authenticating</span>
-                    <span className="flex items-center gap-0.5">
-                      <span className="w-0.5 h-0.5 rounded-full bg-white animate-pulse motion-reduce:animate-none" />
-                      <span className="w-0.5 h-0.5 rounded-full bg-white animate-pulse [animation-delay:150ms] motion-reduce:animate-none" />
-                      <span className="w-0.5 h-0.5 rounded-full bg-white animate-pulse [animation-delay:300ms] motion-reduce:animate-none" />
-                    </span>
+                  <span className="flex items-center gap-2">
+                    <SparkLoader sparkClassName="text-black" />
+                    <span>AUTHENTICATING...</span>
                   </span>
                 ) : (
-                  <span>Sign In</span>
+                  <span className="flex items-center gap-1.5">
+                    <span>SIGN IN</span>
+                    <span className="font-black">&gt;</span>
+                  </span>
                 )}
               </button>
             )}
@@ -380,7 +387,7 @@ export const Navbar: React.FC = () => {
             <button
               type="button"
               onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-              className="md:hidden p-1.5 rounded-md text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800/60 border border-zinc-800"
+              className="md:hidden p-1.5 bg-zinc-900 border-2 border-black shadow-[2px_2px_0px_#000] text-zinc-300 hover:text-white"
               aria-label="Toggle navigation menu"
               aria-expanded={mobileMenuOpen}
             >

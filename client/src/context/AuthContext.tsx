@@ -19,10 +19,46 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
+const getInitialUser = (): UserDTO | null => {
+  if (typeof window === 'undefined') return null;
+  try {
+    const raw = sessionStorage.getItem('foss_cached_profile');
+    return raw ? JSON.parse(raw) : null;
+  } catch {
+    return null;
+  }
+};
+
+const getInitialTeam = (): TeamSession | null => {
+  if (typeof window === 'undefined') return null;
+  try {
+    const raw = sessionStorage.getItem('foss_cached_team');
+    return raw ? JSON.parse(raw) : null;
+  } catch {
+    return null;
+  }
+};
+
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [user, setUser] = useState<UserDTO | null>(null);
-  const [team, setTeam] = useState<TeamSession | null>(null);
-  const [isLoading, setIsLoading] = useState<boolean>(true);
+  const [user, setUser] = useState<UserDTO | null>(getInitialUser);
+  const [team, setTeam] = useState<TeamSession | null>(getInitialTeam);
+  const [isLoading, setIsLoading] = useState<boolean>(() => !getInitialUser());
+
+  const persistCache = (userData: UserDTO | null, teamData: TeamSession | null) => {
+    if (typeof window === 'undefined') return;
+    try {
+      if (userData) {
+        sessionStorage.setItem('foss_cached_profile', JSON.stringify(userData));
+      } else {
+        sessionStorage.removeItem('foss_cached_profile');
+      }
+      if (teamData) {
+        sessionStorage.setItem('foss_cached_team', JSON.stringify(teamData));
+      } else {
+        sessionStorage.removeItem('foss_cached_team');
+      }
+    } catch {}
+  };
 
   const refreshSession = async () => {
     try {
@@ -30,13 +66,16 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if (data?.user) {
         setUser(data.user);
         setTeam(data.team);
+        persistCache(data.user, data.team);
       } else {
         setUser(null);
         setTeam(null);
+        persistCache(null, null);
       }
     } catch {
       setUser(null);
       setTeam(null);
+      persistCache(null, null);
     } finally {
       setIsLoading(false);
     }
@@ -48,6 +87,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const data = await api.post('/auth/dev-login', { role, username, email });
       setUser(data.user);
       setTeam(data.team);
+      persistCache(data.user, data.team);
     } finally {
       setIsLoading(false);
     }
@@ -59,6 +99,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     } finally {
       setUser(null);
       setTeam(null);
+      persistCache(null, null);
+      setIsLoading(false);
     }
   };
 
