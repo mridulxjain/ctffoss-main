@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { Link } from 'react-router-dom';
 import { api } from '../lib/api';
 import type {
   ChallengeListItemDTO,
@@ -21,6 +22,8 @@ import {
   FileText,
   Activity,
   Crosshair,
+  Trophy,
+  ArrowRight,
 } from 'lucide-react';
 
 export const ChallengesPage: React.FC = () => {
@@ -42,6 +45,7 @@ export const ChallengesPage: React.FC = () => {
 
   // Readiness toggle state
   const [togglingReadiness, setTogglingReadiness] = useState(false);
+  const [readinessError, setReadinessError] = useState<string | null>(null);
   const [copiedUrl, setCopiedUrl] = useState(false);
 
   // Live timer for elapsed competition/attempt duration
@@ -122,13 +126,15 @@ export const ChallengesPage: React.FC = () => {
 
   const handleToggleReadiness = async (nextReady: boolean) => {
     if (!team) return;
+    setReadinessError(null);
     try {
       setTogglingReadiness(true);
       await api.post('/competition/readiness', { isReady: nextReady });
       const updated = await api.get('/competition/readiness');
       setReadiness(updated);
     } catch (err: any) {
-      alert(err.message || 'Failed to update squad readiness.');
+      setReadinessError(err.message || 'Failed to update squad readiness.');
+      setTimeout(() => setReadinessError(null), 5000);
     } finally {
       setTogglingReadiness(false);
     }
@@ -157,7 +163,7 @@ export const ChallengesPage: React.FC = () => {
       const res = await api.post('/competition/attempt/submit', { flag: flagInput.trim() });
       setFlagFeedback({
         type: 'success',
-        message: res.message || 'FLAG VERIFIED! YOUR SQUAD HAS COMPLETED THE CHALLENGE.',
+        message: res.message || 'FLAG VERIFIED! YOUR SQUAD HAS CONQUERED THE ARENA.',
       });
       setFlagInput('');
       await fetchData();
@@ -173,123 +179,152 @@ export const ChallengesPage: React.FC = () => {
     }
   };
 
-  const isPreparing = competition?.state === 'PREPARING';
   const isLive = competition?.state === 'LIVE';
-  const isAdmin = user?.role === 'ADMIN';
+  const isAdmin =
+    user?.role === 'ADMIN' ||
+    user?.clubRole === 'admin' ||
+    user?.username?.toLowerCase() === 'mridulxjain';
   const isSolved = Boolean(loventiaChallenge?.isSolvedByTeam || compAttempt?.status === 'COMPLETED');
-  const canLaunchTarget = isLive || isAdmin;
+
+  // CRITICAL: Target link is NEVER visible / launchable until the challenge has officially started (isLive)
+  const canLaunchTarget = isLive;
 
   return (
-    <div className="max-w-5xl mx-auto px-4 sm:px-6 py-8 space-y-8">
-      {/* Top Cyber Navigation Tracker & Smooth Cyber Tapes */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-zinc-800/80 pb-4">
+    <div className="max-w-5xl mx-auto px-4 sm:px-6 py-8 space-y-7">
+      {/* Top Cyber Navigation Tracker & Restored Classic Cyber Stickers */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-zinc-800 pb-4">
         <div className="flex items-center gap-2 font-mono text-xs text-zinc-400 uppercase tracking-wider">
-          <span className="text-emerald-400 font-semibold">&gt;_ UFC_ARENA</span>
+          <span className="text-emerald-400 font-bold">&gt;_ UFC_ARENA</span>
           <span className="text-zinc-700">/</span>
           <span>Target Environment</span>
           <span className="text-zinc-700">/</span>
-          <span className="text-emerald-400 font-semibold">Loventia</span>
+          <span className="text-emerald-400 font-bold">Loventia</span>
         </div>
 
-        {/* Smooth Cyber Tape Stickers (playful hacker theme without brutalist harshness) */}
+        {/* Playful Stickers (Pastel Soft Colors with Serrated Wrapper Cut Edges) */}
         <div className="flex items-center gap-2.5 flex-wrap">
-          <div className="sticker-tape bg-amber-400 text-zinc-950 border border-amber-300/50">
+          <div className="sticker-tape bg-[#fef08a] text-zinc-950">
             // TODO: TOUCH GRASS
           </div>
-          <div className="sticker-tape-right bg-emerald-400 text-zinc-950 border border-emerald-300/50">
+          <div className="sticker-tape-right bg-[#a7f3d0] text-zinc-950">
             TIMED SPEED RUN
           </div>
-          <div className="sticker-tape bg-rose-500 text-white border border-rose-400/50">
+          <div className="sticker-tape bg-[#fbcfe8] text-zinc-950">
             BREAK CODE // CAPTURE FLAG
           </div>
         </div>
       </div>
 
-      {/* Hero Header */}
+      {/* Hero Header with Neobrutal Category Badges & Red-and-White Funky Title */}
       <div className="space-y-3">
-        <div className="flex flex-col sm:flex-row sm:items-baseline justify-between gap-2">
-          <h1 className="text-2xl sm:text-4xl font-bold font-mono tracking-tight text-zinc-100 uppercase">
-            Operation: <span className="text-emerald-400">Loventia</span>
-          </h1>
+        <div className="flex flex-col sm:flex-row sm:items-baseline justify-between gap-3">
+          <div className="flex items-center gap-2 sm:gap-3 flex-wrap">
+            <h1 className="text-2xl sm:text-4xl font-black font-mono uppercase tracking-tight flex items-center gap-2 sm:gap-3 flex-wrap">
+              <span className="text-white drop-shadow-[2px_2px_0px_#000]">OPERATION:</span>
+              <span className="px-3.5 py-1 bg-red-600 text-white font-mono font-black border-2 border-black shadow-[3px_3px_0px_#000] tracking-wider -rotate-1 inline-block">
+                LOVENTIA
+              </span>
+            </h1>
+          </div>
 
-          <div className="flex items-center gap-2 font-mono text-xs">
-            <span className="px-2.5 py-1 bg-zinc-900 border border-zinc-800 rounded-md text-zinc-300 font-medium">
-              Timed Challenge
-            </span>
-            <span className="px-2.5 py-1 bg-emerald-950/40 border border-emerald-500/30 rounded-md text-emerald-400 font-medium">
-              Web Exploitation
-            </span>
+          {/* Badges for "Timed Challenge" and "Web Exploitation": dashed border with dots on each border and high contrast */}
+          <div className="flex items-center gap-3 font-mono text-xs">
+            <div className="relative px-3.5 py-1.5 bg-[#fefce8] text-black border-2 border-dashed border-black font-black uppercase shadow-[2px_2px_0px_#000] tracking-wide inline-flex items-center justify-center select-none">
+              {/* Dots on corners */}
+              <span className="absolute -top-1 -left-1 w-2 h-2 bg-black rounded-full" />
+              <span className="absolute -top-1 -right-1 w-2 h-2 bg-black rounded-full" />
+              <span className="absolute -bottom-1 -left-1 w-2 h-2 bg-black rounded-full" />
+              <span className="absolute -bottom-1 -right-1 w-2 h-2 bg-black rounded-full" />
+              {/* Dots on each border */}
+              <span className="absolute -top-1 left-1/2 -translate-x-1/2 w-1.5 h-1.5 bg-black rounded-full" />
+              <span className="absolute -bottom-1 left-1/2 -translate-x-1/2 w-1.5 h-1.5 bg-black rounded-full" />
+              <span className="absolute top-1/2 -left-1 -translate-y-1/2 w-1.5 h-1.5 bg-black rounded-full" />
+              <span className="absolute top-1/2 -right-1 -translate-y-1/2 w-1.5 h-1.5 bg-black rounded-full" />
+              <span>difficulty: easy</span>
+            </div>
+
+            <div className="relative px-3.5 py-1.5 bg-[#fefce8] text-black border-2 border-dashed border-black font-black uppercase shadow-[2px_2px_0px_#000] tracking-wide inline-flex items-center justify-center select-none">
+              {/* Dots on corners */}
+              <span className="absolute -top-1 -left-1 w-2 h-2 bg-black rounded-full" />
+              <span className="absolute -top-1 -right-1 w-2 h-2 bg-black rounded-full" />
+              <span className="absolute -bottom-1 -left-1 w-2 h-2 bg-black rounded-full" />
+              <span className="absolute -bottom-1 -right-1 w-2 h-2 bg-black rounded-full" />
+              {/* Dots on each border */}
+              <span className="absolute -top-1 left-1/2 -translate-x-1/2 w-1.5 h-1.5 bg-black rounded-full" />
+              <span className="absolute -bottom-1 left-1/2 -translate-x-1/2 w-1.5 h-1.5 bg-black rounded-full" />
+              <span className="absolute top-1/2 -left-1 -translate-y-1/2 w-1.5 h-1.5 bg-black rounded-full" />
+              <span className="absolute top-1/2 -right-1 -translate-y-1/2 w-1.5 h-1.5 bg-black rounded-full" />
+              <span>Web Exploitation</span>
+            </div>
           </div>
         </div>
 
         <p className="text-xs sm:text-sm font-mono text-zinc-400 max-w-3xl leading-relaxed">
-          USAR FOSS Club Official CTF Challenge. Reverse the client-side voucher validation algorithm,
+          <strong className="text-zinc-200">USAR FOSS CLUB, GGSIPU</strong> Official CTF Challenge. Reverse the client-side voucher validation algorithm,
           forge an unauthorized high-value VIP discount token, and check out the secret administrator flag.
         </p>
       </div>
 
+      {/* Readiness error message if any */}
+      {readinessError && (
+        <div className="p-3 border-2 border-black bg-rose-500 text-white font-mono text-xs font-bold flex items-center gap-2 shadow-[3px_3px_0px_#000]">
+          <AlertTriangle className="w-4 h-4 text-white shrink-0 stroke-[2.5]" />
+          <span>{readinessError}</span>
+        </div>
+      )}
+
       {/* MAIN TARGET COMMAND CENTER */}
-      <section className="rounded-xl border border-emerald-500/30 bg-zinc-950/70 backdrop-blur-sm p-6 sm:p-8 shadow-sm space-y-6">
-        {/* Top Status Bar with Corner Readiness Button */}
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-zinc-800/80 pb-4">
+      <section className="border-2 border-black bg-zinc-950 p-6 sm:p-7 shadow-[4px_4px_0px_#000] space-y-6">
+        {/* Top Status Bar with Neobrutal Status & Squad Readiness Button */}
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b-2 border-zinc-800 pb-4">
           <div className="space-y-1">
             <div className="flex items-center gap-2">
-              <span className="text-xs font-mono font-semibold text-emerald-400 uppercase tracking-wider">
+              <span className="text-xs font-mono font-black text-emerald-400 uppercase tracking-wider">
                 Live Target Application
               </span>
-              {isAdmin && isPreparing && (
-                <span className="text-[10px] font-mono px-2 py-0.5 rounded-md bg-amber-950/60 text-amber-300 border border-amber-800/60 font-medium">
-                  Admin Preview Active
-                </span>
-              )}
             </div>
-            <div className="text-sm sm:text-base font-semibold font-mono text-zinc-100 flex items-center gap-2">
-              <span className="text-zinc-500">Host:</span>
-              {canLaunchTarget ? (
-                <span className="text-emerald-400 font-mono transition-colors">ctffoss.vercel.app</span>
-              ) : (
-                <span className="font-mono text-amber-400/90 text-xs px-2 py-0.5 rounded-md bg-amber-950/60 border border-amber-800/60 font-medium">
-                  [Redacted // Locked]
-                </span>
-              )}
+            <div className="text-sm sm:text-base font-bold font-mono text-zinc-100 flex items-center gap-2">
+              <span className="text-zinc-500 font-medium">Host:</span>
+              <span className="text-zinc-100 font-black tracking-wide">USAR FOSS CLUB, GGSIPU</span>
             </div>
           </div>
 
-          {/* Right Corner: Live Round Status & Permanent Squad Readiness Button */}
-          <div className="flex items-center gap-2.5 flex-wrap">
-            {/* Live Timer or State Badge */}
+          {/* Right Corner: Permanent Side-by-Side Status & Squad Readiness Controls (Zero Shift on Click) */}
+          <div className="flex items-center gap-3 shrink-0 flex-nowrap self-start sm:self-auto">
+            {/* Neobrutal Preparation Phase / Round Live Indicator */}
             {isLive ? (
-              <div className="flex items-center gap-2 px-3 py-1.5 bg-emerald-950/40 border border-emerald-500/40 rounded-md text-emerald-300 font-mono text-xs font-semibold shadow-sm">
-                <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse motion-reduce:animate-none" />
+              <div className="h-10 px-3.5 bg-emerald-400 text-black border-2 border-black font-mono text-xs font-black uppercase shadow-[3px_3px_0px_#000] inline-flex items-center gap-2 shrink-0 whitespace-nowrap">
+                <span className="w-2 h-2 rounded-full bg-black animate-ping" />
                 <span>Round Live: {elapsedString}</span>
               </div>
             ) : (
-              <div className="flex items-center gap-2 px-3 py-1.5 bg-amber-950/40 border border-amber-500/40 rounded-md text-amber-300 font-mono text-xs font-semibold shadow-sm">
-                <Clock className="w-3.5 h-3.5" />
+              <div className="h-10 px-3.5 bg-amber-400 text-black border-2 border-black font-mono text-xs font-black uppercase shadow-[3px_3px_0px_#000] inline-flex items-center gap-2 shrink-0 whitespace-nowrap">
+                <Clock className="w-4 h-4 text-black stroke-[2.5]" />
                 <span>Preparation Phase</span>
               </div>
             )}
 
-            {/* Permanent Squad Readiness Button (Always in corner; disabled for admins, toggle for teams) */}
+            {/* Neobrutal Squad Readiness Button (Locked Width & Height to Prevent Shifting) */}
             {isAdmin ? (
-              <button
-                type="button"
-                disabled
-                className="px-3 py-1.5 rounded-md bg-zinc-900 border border-zinc-800 text-zinc-500 font-mono text-xs flex items-center gap-1.5 cursor-not-allowed opacity-80"
-                title="Admin clearance: Readiness is managed by participant squads"
+              <div
+                className="h-10 px-3.5 bg-zinc-900 text-zinc-300 border-2 border-black font-mono text-xs font-bold uppercase shadow-[2px_2px_0px_#000] inline-flex items-center gap-2 shrink-0 whitespace-nowrap"
+                title="Admin clearance: Squad readiness managed by participant squads"
               >
-                <Check className="w-3.5 h-3.5 text-zinc-600" />
-                <span>Squads Ready: {readiness?.readyTeamsCount ?? 0}/{readiness?.totalEligibleTeams ?? 0}</span>
-              </button>
+                <Check className="w-3.5 h-3.5 text-emerald-400 stroke-[2.5]" />
+                <span>Squads Ready:</span>
+                <span className="px-1.5 py-0.5 bg-black text-emerald-400 font-black border border-black text-[11px]">
+                  {readiness?.readyTeamsCount ?? 0}/{readiness?.totalEligibleTeams ?? 0}
+                </span>
+              </div>
             ) : team ? (
               <button
                 type="button"
                 onClick={() => handleToggleReadiness(!readiness?.myTeamReadiness?.isReady)}
                 disabled={togglingReadiness}
-                className={`px-3 py-1.5 rounded-md font-mono text-xs font-semibold transition-all flex items-center gap-1.5 shadow-sm ${
+                className={`h-10 px-4 min-w-[215px] border-2 border-black font-mono text-xs font-black uppercase tracking-wider transition-colors shadow-[3px_3px_0px_#000] inline-flex items-center justify-between gap-2 shrink-0 whitespace-nowrap select-none ${
                   readiness?.myTeamReadiness?.isReady
-                    ? 'bg-emerald-950/60 border border-emerald-500/50 text-emerald-300 hover:bg-emerald-900/60'
-                    : 'bg-zinc-900 hover:bg-zinc-850 border border-zinc-700 text-zinc-200'
+                    ? 'bg-emerald-400 hover:bg-emerald-300 text-black'
+                    : 'bg-amber-400 hover:bg-amber-300 text-black'
                 }`}
                 title={
                   readiness?.myTeamReadiness?.isReady
@@ -297,45 +332,45 @@ export const ChallengesPage: React.FC = () => {
                     : 'Click to mark your squad assembled and ready to attack.'
                 }
               >
-                <Check
-                  className={`w-3.5 h-3.5 ${
-                    readiness?.myTeamReadiness?.isReady ? 'text-emerald-400' : 'text-zinc-500'
-                  }`}
-                />
-                <span>
-                  {togglingReadiness
-                    ? 'Updating...'
-                    : readiness?.myTeamReadiness?.isReady
-                    ? 'Squad Ready'
-                    : 'Mark Squad Ready'}
-                </span>
-                <span className="text-[11px] px-1 py-0.2 rounded bg-black/40 text-zinc-400 font-normal">
+                <div className="flex items-center gap-2">
+                  <Check
+                    className={`w-4 h-4 ${
+                      readiness?.myTeamReadiness?.isReady ? 'text-black stroke-[3]' : 'text-black stroke-[2]'
+                    }`}
+                  />
+                  <span>
+                    {togglingReadiness
+                      ? 'SYNCING...'
+                      : readiness?.myTeamReadiness?.isReady
+                      ? 'SQUAD READY'
+                      : 'MARK SQUAD READY'}
+                  </span>
+                </div>
+                <span className="text-[10px] px-1.5 py-0.5 bg-black text-white font-black border border-black shrink-0">
                   {readiness?.readyTeamsCount ?? 0}/{readiness?.totalEligibleTeams ?? 0}
                 </span>
               </button>
             ) : (
-              <button
-                type="button"
-                disabled
-                className="px-3 py-1.5 rounded-md bg-zinc-900 border border-zinc-800 text-zinc-500 font-mono text-xs flex items-center gap-1.5 cursor-not-allowed opacity-80"
-                title="Sign in with your squad account to toggle squad readiness"
+              <div
+                className="h-10 px-3.5 bg-zinc-900 text-zinc-500 border-2 border-black font-mono text-xs font-bold uppercase shadow-[2px_2px_0px_#000] inline-flex items-center gap-2 shrink-0 whitespace-nowrap"
+                title="Sign in with your squad account to toggle readiness"
               >
                 <Clock className="w-3.5 h-3.5 text-zinc-600" />
                 <span>Squads Ready: {readiness?.readyTeamsCount ?? 0}/{readiness?.totalEligibleTeams ?? 0}</span>
-              </button>
+              </div>
             )}
           </div>
         </div>
 
         {/* Target Action Strip */}
-        <div className="p-4 sm:p-5 rounded-lg bg-zinc-900/60 border border-zinc-800/80 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-4">
+        <div className="p-4 sm:p-5 bg-zinc-900 border-2 border-black shadow-[3px_3px_0px_#000] flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-4">
           <div className="space-y-1 min-w-0 flex-1">
-            <span className="text-[10px] font-mono uppercase text-zinc-500 block">
+            <span className="text-[10px] font-mono uppercase text-zinc-400 font-bold block">
               Direct Target Endpoint:
             </span>
-            <div className="relative overflow-hidden rounded-md bg-black/60 p-2.5 sm:p-3 border border-zinc-800">
+            <div className="relative overflow-hidden bg-black p-2.5 sm:p-3 border-2 border-black shadow-[inset_1px_1px_3px_rgba(0,0,0,0.8)]">
               <div
-                className={`font-mono text-xs sm:text-sm font-semibold transition-all duration-500 select-none ${
+                className={`font-mono text-xs sm:text-sm font-bold transition-all duration-300 select-none ${
                   canLaunchTarget
                     ? 'filter-none opacity-100 text-emerald-300'
                     : 'filter blur-[7px] opacity-25 text-zinc-600 pointer-events-none'
@@ -345,9 +380,9 @@ export const ChallengesPage: React.FC = () => {
               </div>
 
               {!canLaunchTarget && (
-                <div className="absolute inset-0 flex items-center justify-center font-mono text-xs font-semibold uppercase tracking-wider text-amber-400 bg-black/50 backdrop-blur-[1px] select-none">
+                <div className="absolute inset-0 flex items-center justify-center font-mono text-xs font-black uppercase tracking-wider text-amber-400 bg-black/60 backdrop-blur-[1px] select-none">
                   <Lock className="w-3.5 h-3.5 mr-1.5 text-amber-400 shrink-0" />
-                  <span>Target Locked Until Start</span>
+                  <span>Target Locked Until Round Start</span>
                 </div>
               )}
             </div>
@@ -358,10 +393,10 @@ export const ChallengesPage: React.FC = () => {
               type="button"
               onClick={handleCopyUrl}
               disabled={!canLaunchTarget}
-              className={`px-3 py-2 text-xs font-mono font-medium rounded-md transition-colors border flex items-center gap-1.5 ${
+              className={`px-3.5 py-2 text-xs font-mono font-bold uppercase border-2 border-black shadow-[2px_2px_0px_#000] transition-all flex items-center gap-1.5 ${
                 canLaunchTarget
-                  ? 'bg-zinc-800 hover:bg-zinc-700 text-zinc-200 border-zinc-700 shadow-sm'
-                  : 'bg-zinc-900 text-zinc-600 border-zinc-800/80 cursor-not-allowed opacity-60'
+                  ? 'bg-zinc-800 hover:bg-zinc-750 text-zinc-100 active:translate-x-0.5 active:translate-y-0.5'
+                  : 'bg-zinc-900 text-zinc-600 cursor-not-allowed opacity-60'
               }`}
             >
               {canLaunchTarget ? (
@@ -382,17 +417,17 @@ export const ChallengesPage: React.FC = () => {
                 href={targetUrl}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="px-4 py-2 text-xs sm:text-sm font-mono font-semibold uppercase rounded-md transition-colors bg-emerald-500 hover:bg-emerald-400 active:bg-emerald-600 text-zinc-950 border border-emerald-400 flex items-center gap-2 shadow-sm"
+                className="px-5 py-2 text-xs sm:text-sm font-mono font-black uppercase bg-emerald-400 hover:bg-emerald-300 text-black border-2 border-black shadow-[3px_3px_0px_#000] active:translate-x-0.5 active:translate-y-0.5 flex items-center gap-2 transition-all"
               >
                 <span>Launch Target Site</span>
-                <ExternalLink className="w-3.5 h-3.5" />
+                <ExternalLink className="w-4 h-4 stroke-[2.5]" />
               </a>
             ) : (
               <button
                 type="button"
                 disabled
-                className="px-4 py-2 text-xs sm:text-sm font-mono font-medium uppercase rounded-md bg-zinc-900 text-zinc-500 border border-zinc-800 cursor-not-allowed flex items-center gap-2 opacity-60"
-                title="Target unlocks when the competition officially begins"
+                className="px-4 py-2 text-xs sm:text-sm font-mono font-bold uppercase bg-zinc-850 text-zinc-500 border-2 border-black shadow-[2px_2px_0px_#000] cursor-not-allowed flex items-center gap-2 opacity-60"
+                title="Target unlocks automatically when the competition officially begins"
               >
                 <Lock className="w-3.5 h-3.5 text-zinc-600" />
                 <span>Target Locked (Staging)</span>
@@ -402,19 +437,21 @@ export const ChallengesPage: React.FC = () => {
         </div>
 
         {/* Target Instructions Callout */}
-        <div className="flex items-start gap-2.5 text-xs font-mono text-zinc-400 p-3 rounded-lg bg-zinc-900/30 border border-zinc-800/60">
+        <div className="flex items-start gap-2.5 text-xs font-mono text-zinc-300 p-3.5 bg-zinc-900 border-2 border-black shadow-[2px_2px_0px_#000]">
           {canLaunchTarget ? (
             <>
-              <Zap className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
+              <Zap className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5 fill-emerald-400" />
               <span>
-                Target is active. Inspect network requests on the target to understand the voucher verification API and sign your customized voucher.
+                <strong className="text-emerald-400 uppercase font-black mr-1.5">[TARGET ACTIVE]:</strong>
+                Inspect network requests on the target to understand the voucher verification API and sign your customized voucher.
               </span>
             </>
           ) : (
             <>
               <Clock className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
               <span>
-                Competition is in preparation state. Mark your squad ready above. Once the administrator starts the round, the target link will immediately activate.
+                <strong className="text-amber-400 uppercase font-black mr-1.5">[PREPARATION]:</strong>
+                Competition is in staging state. Mark your squad ready above. Once the administrator starts the round, the target link will immediately activate.
               </span>
             </>
           )}
@@ -424,12 +461,12 @@ export const ChallengesPage: React.FC = () => {
       {/* INTEL & RECON DIRECTIVES GRID */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
         {/* Card 1: Mission Brief */}
-        <div className="rounded-xl border border-zinc-800/80 bg-zinc-900/40 hover:bg-zinc-900/60 p-5 space-y-3 transition-colors shadow-sm">
-          <div className="flex items-center gap-1.5 text-[11px] font-mono font-semibold text-emerald-400 uppercase tracking-wider">
+        <div className="border-2 border-black bg-zinc-950 p-5 space-y-3 shadow-[3px_3px_0px_#000] hover:translate-x-[-1px] hover:translate-y-[-1px] transition-all">
+          <div className="flex items-center gap-1.5 text-[11px] font-mono font-black text-emerald-400 uppercase tracking-wider">
             <FileText className="w-3.5 h-3.5" />
             <span>Mission Brief</span>
           </div>
-          <h2 className="font-mono text-sm font-semibold text-zinc-100 uppercase">
+          <h2 className="font-mono text-sm font-black text-zinc-100 uppercase">
             Discount Voucher Forgery
           </h2>
           <p className="text-xs font-mono text-zinc-400 leading-relaxed">
@@ -439,91 +476,120 @@ export const ChallengesPage: React.FC = () => {
         </div>
 
         {/* Card 2: Squad Telemetry */}
-        <div className="rounded-xl border border-zinc-800/80 bg-zinc-900/40 hover:bg-zinc-900/60 p-5 space-y-3 transition-colors shadow-sm">
-          <div className="flex items-center gap-1.5 text-[11px] font-mono font-semibold text-amber-400 uppercase tracking-wider">
+        <div className="border-2 border-black bg-zinc-950 p-5 space-y-3 shadow-[3px_3px_0px_#000] hover:translate-x-[-1px] hover:translate-y-[-1px] transition-all">
+          <div className="flex items-center gap-1.5 text-[11px] font-mono font-black text-amber-400 uppercase tracking-wider">
             <Activity className="w-3.5 h-3.5" />
             <span>Squad Telemetry</span>
           </div>
-          <h2 className="font-mono text-sm font-semibold text-zinc-100 uppercase">
+          <h2 className="font-mono text-sm font-black text-zinc-100 uppercase truncate">
             {team ? team.name : 'Unassigned Operative'}
           </h2>
           <div className="space-y-1.5 text-xs font-mono text-zinc-400">
             <div>
-              <span className="text-zinc-500">Ranking:</span>{' '}
+              <span className="text-zinc-500 font-bold">Ranking:</span>{' '}
               <strong className="text-emerald-400">Pure Speed / Time</strong>
             </div>
             <div className="flex items-center gap-1.5">
-              <span className="text-zinc-500">Solve Status:</span>{' '}
+              <span className="text-zinc-500 font-bold">Solve Status:</span>{' '}
               {isSolved ? (
-                <span className="inline-flex items-center gap-1 text-emerald-400 font-semibold">
-                  <CheckCircle2 className="w-3.5 h-3.5" />
+                <span className="inline-flex items-center gap-1 text-emerald-400 font-black">
+                  <CheckCircle2 className="w-3.5 h-3.5 stroke-[2.5]" />
                   <span>SOLVED</span>
                 </span>
               ) : (
-                <span className="text-amber-400 font-medium">In Progress</span>
+                <span className="text-amber-400 font-bold">In Progress</span>
               )}
             </div>
             <div>
-              <span className="text-zinc-500">Flag Pattern:</span>{' '}
-              <span className="text-zinc-300 font-medium">FOSSCTF{'{...}'}</span>
+              <span className="text-zinc-500 font-bold">Flag Pattern:</span>{' '}
+              <span className="text-zinc-300 font-bold">FOSSCTF{'{...}'}</span>
             </div>
           </div>
         </div>
 
         {/* Card 3: Attack Playbook */}
-        <div className="rounded-xl border border-zinc-800/80 bg-zinc-900/40 hover:bg-zinc-900/60 p-5 space-y-3 transition-colors shadow-sm">
-          <div className="flex items-center gap-1.5 text-[11px] font-mono font-semibold text-purple-400 uppercase tracking-wider">
+        <div className="border-2 border-black bg-zinc-950 p-5 space-y-3 shadow-[3px_3px_0px_#000] hover:translate-x-[-1px] hover:translate-y-[-1px] transition-all">
+          <div className="flex items-center gap-1.5 text-[11px] font-mono font-black text-cyan-400 uppercase tracking-wider">
             <Crosshair className="w-3.5 h-3.5" />
             <span>Attack Playbook</span>
           </div>
-          <h2 className="font-mono text-sm font-semibold text-zinc-100 uppercase">
+          <h2 className="font-mono text-sm font-black text-zinc-100 uppercase">
             Execution Steps
           </h2>
           <ol className="text-xs font-mono text-zinc-400 space-y-1 list-decimal list-inside">
             <li>Access the target site once the competition starts</li>
-            <li>Intercept the <code className="text-emerald-400">/api/vouchers</code> payload</li>
+            <li>Intercept the <code className="text-emerald-400 font-bold">/api/vouchers</code> payload</li>
             <li>Forge the 100% discount VIP token</li>
             <li>Checkout secret admin item & retrieve flag</li>
           </ol>
         </div>
       </div>
 
-      {/* FLAG SUBMISSION TERMINAL */}
-      <section className="rounded-xl border border-zinc-800/80 bg-zinc-950/70 backdrop-blur-sm p-6 sm:p-7 shadow-sm space-y-5">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-zinc-800/80 pb-4">
+      {/* UNIQUE, NEOBRUTAL, FUNKY FLAG SUBMISSION CONSOLE */}
+      <section className="border-3 border-black bg-zinc-950 p-6 sm:p-7 shadow-[6px_6px_0px_#000] space-y-5 relative overflow-hidden">
+        {/* Funky Corner Tape Sticker (Pastel Ocean Blue with Wrapper Cut) */}
+        <div className="absolute right-3 top-3 hidden sm:block">
+          <div className="sticker-tape-right bg-[#bae6fd] text-zinc-950 font-black text-[10px] uppercase tracking-wider">
+            // HACK THE PLANET
+          </div>
+        </div>
+
+        {/* Console Header Bar */}
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b-2 border-black pb-4">
           <div className="space-y-1">
             <div className="flex items-center gap-2">
-              <Terminal className="w-4 h-4 text-emerald-400" />
-              <span className="text-xs font-mono font-semibold text-emerald-400 uppercase tracking-wider">
-                Flag Submission Terminal
+              <span className="w-2.5 h-2.5 rounded-full bg-rose-500 border border-black inline-block" />
+              <span className="w-2.5 h-2.5 rounded-full bg-amber-500 border border-black inline-block" />
+              <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 border border-black inline-block" />
+              <span className="ml-1 text-xs font-mono font-black text-emerald-400 uppercase tracking-widest">
+                [TRANSMIT_PAYLOAD_CONSOLE] // PORT_1337
               </span>
             </div>
-            <h2 className="text-base sm:text-lg font-semibold font-mono text-zinc-100">
-              Transmit Captured Token
+            <h2 className="text-base sm:text-xl font-black font-mono text-zinc-100 uppercase tracking-tight flex items-center gap-2">
+              <Terminal className="w-5 h-5 text-emerald-400 stroke-[2.5]" />
+              <span>DISPATCH CAPTURE TOKEN</span>
             </h2>
           </div>
         </div>
 
         {/* Solved Victory Banner */}
         {isSolved ? (
-          <div className="p-4 sm:p-5 rounded-lg bg-emerald-950/30 border border-emerald-500/40 font-mono text-xs space-y-2">
-            <div className="flex items-center gap-2 text-emerald-400 font-semibold text-sm">
-              <CheckCircle2 className="w-4 h-4 text-emerald-400" />
-              <span>LOVENTIA FLAG CAPTURED & VERIFIED</span>
+          <div className="p-5 sm:p-6 border-3 border-black bg-emerald-400 text-black shadow-[5px_5px_0px_#000] font-mono space-y-3">
+            <div className="flex items-center justify-between flex-wrap gap-2">
+              <div className="flex items-center gap-2 font-black text-sm sm:text-base uppercase">
+                <Trophy className="w-5 h-5 text-black stroke-[2.5]" />
+                <span>LOVENTIA FLAG CONQUERED & VERIFIED</span>
+              </div>
+              <Link
+                to="/competition/leaderboard"
+                className="px-3.5 py-1.5 bg-black text-emerald-400 hover:text-white font-black text-xs uppercase border-2 border-black shadow-[2px_2px_0px_#000] active:translate-x-0.5 active:translate-y-0.5 flex items-center gap-1.5 transition-all"
+              >
+                <span>View Leaderboard</span>
+                <ArrowRight className="w-3.5 h-3.5 stroke-[2.5]" />
+              </Link>
             </div>
-            <p className="text-zinc-300">
-              Your squad has conquered the Loventia challenge. Your official solve duration has been verified and recorded on the live leaderboard.
+            <p className="text-xs sm:text-sm text-zinc-950 font-semibold leading-relaxed">
+              Your squad has officially captured the Loventia flag. Your solve timestamp and duration are recorded on the synchronized scoreboard.
             </p>
           </div>
         ) : (
-          <form onSubmit={handleSubmitFlag} className="space-y-4">
-            <div className="space-y-1.5">
-              <label htmlFor="flagInput" className="text-xs font-mono text-zinc-300 font-semibold uppercase tracking-wider block">
-                Flag Token Submission
-              </label>
-              <div className="flex flex-col sm:flex-row items-stretch gap-2.5">
+          <form onSubmit={handleSubmitFlag} className="space-y-4 font-mono">
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <label
+                  htmlFor="flagInput"
+                  className="text-xs font-mono text-zinc-200 font-black uppercase tracking-wider block"
+                >
+                  SUBMIT SECRET FLAG
+                </label>
+                <span className="text-[10px] text-zinc-500 font-bold uppercase tracking-wider">
+                  CASE-SENSITIVE // SHA-256
+                </span>
+              </div>
+
+              <div className="flex flex-col sm:flex-row items-stretch gap-3">
                 <div className="relative flex-1">
-                  <span className="absolute left-3 top-1/2 -translate-y-1/2 font-mono text-emerald-400 text-sm select-none font-semibold">
+                  <span className="absolute left-3.5 top-1/2 -translate-y-1/2 font-mono text-emerald-400 text-sm select-none font-black">
                     &gt;
                   </span>
                   <input
@@ -533,17 +599,17 @@ export const ChallengesPage: React.FC = () => {
                     onChange={(e) => setFlagInput(e.target.value)}
                     placeholder="FOSSCTF{...}"
                     disabled={submittingFlag}
-                    className="w-full pl-7 pr-3 py-2.5 rounded-md bg-zinc-900 border border-zinc-800 focus:border-emerald-500 font-mono text-xs sm:text-sm text-zinc-100 placeholder-zinc-600 focus:outline-none transition-colors"
+                    className="w-full pl-8 pr-4 py-3 border-2 border-zinc-600 hover:border-zinc-500 focus:border-emerald-400 bg-[#080d16] text-emerald-400 font-mono text-xs sm:text-sm font-bold placeholder-zinc-600 shadow-[2px_2px_0px_#000] focus:shadow-[0_0_12px_rgba(52,211,153,0.3)] focus:outline-none transition-all"
                   />
                 </div>
 
                 <button
                   type="submit"
                   disabled={submittingFlag || !flagInput.trim()}
-                  className="px-5 py-2.5 rounded-md bg-emerald-500 hover:bg-emerald-400 active:bg-emerald-600 text-zinc-950 font-mono font-semibold text-xs uppercase tracking-wider border border-emerald-400 shadow-sm transition-colors flex items-center justify-center gap-2 disabled:opacity-50 shrink-0"
+                  className="px-6 py-3 border-2 border-black bg-emerald-400 hover:bg-emerald-300 active:bg-emerald-500 text-black font-mono font-black text-xs sm:text-sm uppercase tracking-wider shadow-[4px_4px_0px_#000] active:translate-x-1 active:translate-y-1 transition-all flex items-center justify-center gap-2 disabled:opacity-50 shrink-0"
                 >
-                  <Send className="w-3.5 h-3.5" />
-                  <span>{submittingFlag ? 'Transmitting...' : 'Transmit Flag'}</span>
+                  <Send className="w-4 h-4 stroke-[3]" />
+                  <span>{submittingFlag ? 'TRANSMITTING...' : 'TRANSMIT FLAG'}</span>
                 </button>
               </div>
             </div>
@@ -551,16 +617,16 @@ export const ChallengesPage: React.FC = () => {
             {/* Submission Feedback Message */}
             {flagFeedback && (
               <div
-                className={`p-3 rounded-lg border font-mono text-xs flex items-center gap-2.5 ${
+                className={`p-3.5 border-2 border-black font-mono text-xs font-bold flex items-center gap-2.5 shadow-[3px_3px_0px_#000] ${
                   flagFeedback.type === 'success'
-                    ? 'bg-emerald-950/40 border-emerald-500/40 text-emerald-300'
-                    : 'bg-rose-950/40 border-rose-500/40 text-rose-300'
+                    ? 'bg-emerald-400 text-black'
+                    : 'bg-rose-500 text-white'
                 }`}
               >
                 {flagFeedback.type === 'success' ? (
-                  <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+                  <CheckCircle2 className="w-4 h-4 text-black shrink-0 stroke-[2.5]" />
                 ) : (
-                  <AlertTriangle className="w-4 h-4 text-rose-400 shrink-0" />
+                  <AlertTriangle className="w-4 h-4 text-white shrink-0 stroke-[2.5]" />
                 )}
                 <span>{flagFeedback.message}</span>
               </div>

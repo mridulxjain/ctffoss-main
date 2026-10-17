@@ -15,8 +15,8 @@ import {
 import { useAuth } from '../../context/AuthContext';
 import { api, getLoginUrl } from '../../lib/api';
 import type { Role, CompetitionConfigDTO } from '@fossctf/shared';
-import { KeycapLogo } from '../common/KeycapLogo';
 import { SparkLoader } from '../common/SparkLoader';
+import { RoleBadge } from '../common/RoleBadge';
 
 interface DevPersonaGroup {
   group: string;
@@ -63,7 +63,8 @@ const DEV_PERSONA_GROUPS: DevPersonaGroup[] = [
   {
     group: 'Platform Admin',
     personas: [
-      { role: 'ADMIN', username: 'foss_admin', email: 'admin@fossclub.tech', label: 'Platform Admin' },
+      { role: 'ADMIN', username: 'mridulxjain', email: 'krishnajain2604@gmail.com', label: 'mridulxjain (Admin)' },
+      { role: 'ADMIN', username: 'foss_admin', email: 'admin@fossclub.tech', label: 'Platform Admin (foss_admin)' },
     ],
   },
   {
@@ -89,12 +90,50 @@ export const Navbar: React.FC = () => {
   const authenticatingRef = useRef(false);
   const switchingPersonaRef = useRef(false);
 
-  // Navigation items with clean labels and outline icons (no emojis)
+  // Admin privileges check (supporting OIDC role extraction, DB role, or mridulxjain)
+  const isAdminUser =
+    user?.role === 'ADMIN' ||
+    user?.clubRole === 'admin' ||
+    user?.username?.toLowerCase() === 'mridulxjain';
+
+  // Navigation items with custom pastel colors for neobrutalist active states
   const navItems = [
-    { label: 'Loventia', path: '/challenges', icon: Flag },
-    { label: 'Leaderboard', path: '/competition/leaderboard', icon: Trophy },
-    { label: 'Squad', path: '/team', icon: Users },
-    ...(user?.role === 'ADMIN' ? [{ label: 'Admin', path: '/admin/challenges', icon: Shield }] : []),
+    {
+      label: 'Loventia',
+      path: '/challenges',
+      icon: Flag,
+      activeClasses: 'bg-blue-950/40 text-blue-200 border-2 border-blue-400 shadow-[2px_2px_0px_#60a5fa]',
+      activeIconClasses: 'text-blue-300 fill-blue-400/60',
+      mobileActiveClass: 'bg-blue-950/50 text-blue-200 border border-blue-400/50',
+    },
+    {
+      label: 'Leaderboard',
+      path: '/competition/leaderboard',
+      icon: Trophy,
+      activeClasses: 'bg-amber-950/30 text-amber-100 border-2 border-amber-200 shadow-[2px_2px_0px_#fde68a]',
+      activeIconClasses: 'text-amber-200 fill-amber-300/70',
+      mobileActiveClass: 'bg-amber-950/40 text-amber-100 border border-amber-300/50',
+    },
+    {
+      label: 'Squad',
+      path: '/team',
+      icon: Users,
+      activeClasses: 'bg-pink-950/30 text-pink-200 border-2 border-pink-400 shadow-[2px_2px_0px_#f472b6]',
+      activeIconClasses: 'text-pink-300 fill-pink-400/60',
+      mobileActiveClass: 'bg-pink-950/40 text-pink-200 border border-pink-400/50',
+    },
+    ...(isAdminUser
+      ? [
+          {
+            label: 'Admin',
+            path: '/admin/challenges',
+            icon: Shield,
+            activeClasses: 'bg-cyan-950/40 text-cyan-200 border-2 border-cyan-400 shadow-[2px_2px_0px_#22d3ee]',
+            activeIconClasses: 'text-cyan-300 fill-cyan-400/60',
+            mobileActiveClass: 'bg-cyan-950/40 text-cyan-200 border border-cyan-400/50',
+          },
+        ]
+      : []),
   ];
 
   useEffect(() => {
@@ -204,19 +243,23 @@ export const Navbar: React.FC = () => {
         <div className="max-w-6xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between gap-6">
           {/* Left: Brand + Desktop Nav */}
           <div className="flex items-center gap-6 lg:gap-8 min-w-0">
-            {/* Logo / Brand with Neobrutal Clickable Keycap Button */}
+            {/* Logo / Brand with Favicon Pixel Art Logo */}
             <Link
               to="/challenges"
-              className="flex items-center gap-3 group shrink-0"
+              className="flex items-center gap-2.5 sm:gap-3 group shrink-0"
               aria-label="FOSS CTF Home"
             >
-              <KeycapLogo size={38} />
+              <img
+                src="/ctf_foss_pixel_brutalist_favicon_256.png"
+                alt="FOSS CTF Logo"
+                className="w-9 h-9 sm:w-10 sm:h-10 object-contain drop-shadow-[2px_2px_0px_#000] group-hover:scale-105 group-active:translate-y-0.5 transition-all select-none"
+              />
               <span className="font-mono font-bold text-base tracking-tight text-zinc-100 group-hover:text-emerald-400 transition-colors uppercase">
                 UFC<span className="text-emerald-400 font-mono text-xs sm:text-sm ml-0.5">_CTF</span>
               </span>
             </Link>
 
-            {/* Desktop Navigation Links (Neobrutalist Cyber Tabs) */}
+            {/* Desktop Navigation Links (Neobrutalist Pastel Cyber Tabs) */}
             <nav className="hidden md:flex items-center gap-2" aria-label="Main Navigation">
               {navItems.map((item) => {
                 const isActive =
@@ -230,11 +273,15 @@ export const Navbar: React.FC = () => {
                     to={item.path}
                     className={`flex items-center gap-2 px-3 py-1.5 text-xs font-mono font-bold uppercase tracking-wider rounded transition-all whitespace-nowrap ${
                       isActive
-                        ? 'bg-zinc-900 text-emerald-400 border border-emerald-500 shadow-[2px_2px_0px_#10b981]'
+                        ? item.activeClasses
                         : 'text-zinc-400 hover:text-zinc-100 hover:bg-zinc-900/60 border border-transparent'
                     }`}
                   >
-                    <Icon className={`w-3.5 h-3.5 ${isActive ? 'text-emerald-400' : 'text-zinc-500'}`} />
+                    <Icon
+                      className={`w-3.5 h-3.5 transition-colors ${
+                        isActive ? item.activeIconClasses : 'text-zinc-500'
+                      }`}
+                    />
                     <span>{item.label}</span>
                   </Link>
                 );
@@ -288,9 +335,8 @@ export const Navbar: React.FC = () => {
                                 key={p.username}
                                 type="button"
                                 onClick={() => handlePersonaSelect(p)}
-                                className={`w-full text-left px-3 py-1.5 flex items-center justify-between hover:bg-zinc-800/70 transition-colors ${
-                                  isSelected ? 'text-emerald-400 font-medium bg-emerald-500/10' : 'text-zinc-300'
-                                }`}
+                                className={`w-full text-left px-3 py-1.5 flex items-center justify-between hover:bg-zinc-800/70 transition-colors ${isSelected ? 'text-emerald-400 font-medium bg-emerald-500/10' : 'text-zinc-300'
+                                  }`}
                               >
                                 <div className="truncate">
                                   <span className="block truncate text-xs">{p.label}</span>
@@ -337,6 +383,7 @@ export const Navbar: React.FC = () => {
                   <span className="font-mono text-xs text-zinc-100 font-bold max-w-[100px] sm:max-w-[130px] truncate uppercase tracking-wider">
                     {user.username}
                   </span>
+                  <RoleBadge user={user} tooltipPlacement="bottom-right" />
                 </div>
                 <button
                   type="button"
@@ -413,11 +460,15 @@ export const Navbar: React.FC = () => {
                     onClick={() => setMobileMenuOpen(false)}
                     className={`flex items-center gap-2.5 px-3 py-2 rounded-md text-xs font-mono font-medium transition-colors ${
                       isActive
-                        ? 'bg-zinc-800/90 text-emerald-400 border border-emerald-500/30'
+                        ? item.mobileActiveClass
                         : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-900 border border-transparent'
                     }`}
                   >
-                    <Icon className="w-4 h-4 text-zinc-400" />
+                    <Icon
+                      className={`w-4 h-4 ${
+                        isActive ? item.activeIconClasses : 'text-zinc-400'
+                      }`}
+                    />
                     <span>{item.label}</span>
                   </Link>
                 );
@@ -428,6 +479,16 @@ export const Navbar: React.FC = () => {
               <div className="pt-2 border-t border-zinc-800/60 flex items-center justify-between text-xs font-mono text-zinc-400 px-3 py-1">
                 <span className="text-[10px] uppercase text-zinc-500">Squad:</span>
                 <span className="text-zinc-200 font-semibold">{team.name}</span>
+              </div>
+            )}
+
+            {user && (
+              <div className="pt-2 border-t border-zinc-800/60 flex items-center justify-between text-xs font-mono text-zinc-300 px-3 py-1">
+                <span className="text-[10px] uppercase text-zinc-500">Identity:</span>
+                <div className="flex items-center gap-2">
+                  <span className="font-bold text-zinc-100 uppercase">{user.username}</span>
+                  <RoleBadge user={user} showText />
+                </div>
               </div>
             )}
           </div>

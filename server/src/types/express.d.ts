@@ -8,6 +8,7 @@ declare global {
         email: string;
         username: string;
         role: Role;
+        clubRole?: string | null;
         teamId: string | null;
       };
     }

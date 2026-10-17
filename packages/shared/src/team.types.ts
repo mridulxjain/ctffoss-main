@@ -1,8 +1,10 @@
 export interface TeamMemberDTO {
   id: string;
   username: string;
+  displayName?: string;
   email: string;
   role: string;
+  isLoggedIn?: boolean;
 }
 
 export interface TeamSolveDTO {

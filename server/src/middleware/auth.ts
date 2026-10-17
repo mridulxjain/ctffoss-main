@@ -8,7 +8,25 @@ interface JWTPayload {
   email: string;
   username: string;
   role: Role;
+  clubRole?: string | null;
   teamId: string | null;
+}
+
+// Tracks active user presence in CTF (timestamp of last activity)
+export const activeUserSessions = new Map<string, number>();
+
+export function markUserActive(userId: string) {
+  if (userId) {
+    activeUserSessions.set(userId, Date.now());
+  }
+}
+
+export function isUserActive(userId: string): boolean {
+  if (!userId) return false;
+  const lastActive = activeUserSessions.get(userId);
+  if (!lastActive) return false;
+  // Consider active if user was active in the last 30 minutes
+  return Date.now() - lastActive < 30 * 60 * 1000;
 }
 
 export async function authenticate(req: Request, res: Response, next: NextFunction): Promise<void> {
@@ -23,6 +41,7 @@ export async function authenticate(req: Request, res: Response, next: NextFuncti
     const payload = verifyJwtToken<JWTPayload>(token);
     if (payload) {
       req.user = { ...payload };
+      markUserActive(payload.id);
 
       // Re-validate against authoritative database state if user exists to prevent stale teamId / role
       try {
@@ -35,9 +54,21 @@ export async function authenticate(req: Request, res: Response, next: NextFuncti
         if (liveUser) {
           req.user.teamId = liveUser.teamId;
           req.user.role = liveUser.role;
+          if (liveUser.role === 'ADMIN') {
+            req.user.clubRole = 'admin';
+          }
         }
       } catch {
         // Retain verified JWT payload if database lookup encounters transient error
+      }
+
+      // Safety check for verified mridulxjain admin account from Supabase
+      if (
+        req.user.username?.toLowerCase() === 'mridulxjain' ||
+        req.user.email?.toLowerCase() === 'krishnajain2604@gmail.com'
+      ) {
+        req.user.role = 'ADMIN';
+        req.user.clubRole = 'admin';
       }
     }
   }

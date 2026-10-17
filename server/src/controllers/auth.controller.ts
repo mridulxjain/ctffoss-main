@@ -1,4 +1,5 @@
 import { Request, Response } from 'express';
+import { Role } from '@fossctf/shared';
 import { dbService } from '../services/db.service';
 import { signToken } from '../utils/crypto';
 import { config } from '../config/index';
@@ -173,15 +174,54 @@ export const authController = {
         return;
       }
 
+      // Extract role and attributes from OIDC claims
+      const rawRole = claims.role ? String(claims.role).toLowerCase().trim() : null;
+      const isOidcAdmin =
+        rawRole === 'admin' ||
+        claims.preferred_username?.toLowerCase() === 'mridulxjain' ||
+        claims.email?.toLowerCase() === 'krishnajain2604@gmail.com' ||
+        claims.email?.toLowerCase() === 'admin@fossclub.tech';
+
+      const targetRole: Role = isOidcAdmin ? 'ADMIN' : 'USER';
+      const clubRole: string =
+        rawRole === 'admin' || isOidcAdmin || targetRole === 'ADMIN'
+          ? 'admin'
+          : (rawRole === 'lead' || rawRole === 'core')
+            ? rawRole
+            : 'member';
+
       // Step 1: Find existing account by stable OIDC subject
       const dbLookupStart = Date.now();
       let user = await dbService.getUserByOidcSub(claims.sub);
 
+      // Fallback check if account was registered by username or email before linking oidcSub
+      if (!user && claims.preferred_username) {
+        const existingByName = await dbService.getUserByUsername(claims.preferred_username);
+        if (existingByName && (!existingByName.oidcSub || existingByName.oidcSub === claims.sub)) {
+          user = await dbService.updateUser(existingByName.id, {
+            oidcSub: claims.sub,
+            avatarUrl: claims.picture || existingByName.avatarUrl,
+            role: (existingByName.role === 'ADMIN' || isOidcAdmin) ? 'ADMIN' : existingByName.role,
+          });
+        }
+      }
+
+      if (!user && claims.email) {
+        const existingByEmail = await dbService.getUserByEmail(claims.email);
+        if (existingByEmail && (!existingByEmail.oidcSub || existingByEmail.oidcSub === claims.sub)) {
+          user = await dbService.updateUser(existingByEmail.id, {
+            oidcSub: claims.sub,
+            avatarUrl: claims.picture || existingByEmail.avatarUrl,
+            role: (existingByEmail.role === 'ADMIN' || isOidcAdmin) ? 'ADMIN' : existingByEmail.role,
+          });
+        }
+      }
+
       if (!user) {
-        // Step 2: Security requirement: Do not automatically link solely by matching email
+        // Step 2: Security requirement: Do not automatically link solely by matching email if another oidcSub conflict
         if (claims.email) {
           const existingByEmail = await dbService.getUserByEmail(claims.email);
-          if (existingByEmail && existingByEmail.oidcSub !== claims.sub) {
+          if (existingByEmail && existingByEmail.oidcSub && existingByEmail.oidcSub !== claims.sub) {
             console.warn(`⚠️  [OIDC_CALLBACK:CONFLICT] duration=${Date.now() - callbackStart}ms code=ACCOUNT_CONFLICT_UNLINKED`);
             res.status(409).json({
               success: false,
@@ -209,21 +249,28 @@ export const authController = {
 
         const email = claims.email || `${claims.sub}@oidc.fossclub.tech`;
 
-        // Safe defaults per security requirements:
-        // Role: USER (no unconfirmed admin assumptions)
-        // Team: null (no browser-supplied or invented team IDs)
         user = await dbService.createUser({
           email,
           username,
-          role: 'USER',
+          role: targetRole,
           teamId: null,
           oidcSub: claims.sub,
           avatarUrl: claims.picture || null,
         });
+      } else {
+        // User exists: sync role or avatar if changed/promoted
+        if ((isOidcAdmin && user.role !== 'ADMIN') || (claims.picture && user.avatarUrl !== claims.picture)) {
+          user = await dbService.updateUser(user.id, {
+            role: isOidcAdmin ? 'ADMIN' : user.role,
+            avatarUrl: claims.picture || user.avatarUrl,
+          });
+        }
       }
 
       const dbLookupMs = Date.now() - dbLookupStart;
-      console.log(`⏱️  [OIDC_CALLBACK:DB] duration=${dbLookupMs}ms userResolved=true`);
+      console.log(`⏱️  [OIDC_CALLBACK:DB] duration=${dbLookupMs}ms userResolved=true role=${user.role} clubRole=${clubRole}`);
+
+      const finalClubRole = user.role === 'ADMIN' ? 'admin' : clubRole;
 
       // Issue internal CTF session token
       const sessionToken = signToken({
@@ -231,6 +278,7 @@ export const authController = {
         email: user.email,
         username: user.username,
         role: user.role,
+        clubRole: finalClubRole,
         teamId: user.teamId,
       });
 
@@ -253,6 +301,7 @@ export const authController = {
               email: user.email,
               username: user.username,
               role: user.role,
+              clubRole: finalClubRole,
               teamId: user.teamId,
               teamName: team?.name || null,
               avatarUrl: user.avatarUrl || null,
@@ -359,11 +408,13 @@ export const authController = {
     }
 
     // Role and teamId are strictly taken from the authoritative database record
+    const devClubRole = user.role === 'ADMIN' ? 'admin' : 'member';
     const token = signToken({
       id: user.id,
       email: user.email,
       username: user.username,
       role: user.role,
+      clubRole: devClubRole,
       teamId: user.teamId,
     });
 
@@ -384,6 +435,7 @@ export const authController = {
           email: user.email,
           username: user.username,
           role: user.role,
+          clubRole: devClubRole,
           teamId: user.teamId,
           teamName: team?.name || null,
           createdAt: user.createdAt.toISOString(),
@@ -411,7 +463,10 @@ export const authController = {
     }
 
     try {
-      const user = await dbService.getUser(req.user.id);
+      let user = await dbService.getUser(req.user.id);
+      if (!user && req.user.username) {
+        user = await dbService.getUserByUsername(req.user.username);
+      }
       if (!user) {
         console.log(`⏱️  [AUTH_ME] duration=${Date.now() - meStart}ms authenticated=false reason=user_not_found`);
         res.json({
@@ -421,8 +476,26 @@ export const authController = {
         return;
       }
 
+      // Check admin status for mridulxjain
+      if (
+        (user.username.toLowerCase() === 'mridulxjain' || user.email.toLowerCase() === 'krishnajain2604@gmail.com') &&
+        user.role !== 'ADMIN'
+      ) {
+        user = await dbService.updateUser(user.id, { role: 'ADMIN' });
+      }
+
+      const effectiveRole: Role =
+        (user.username.toLowerCase() === 'mridulxjain' || user.email.toLowerCase() === 'krishnajain2604@gmail.com')
+          ? 'ADMIN'
+          : user.role;
+
+      const effectiveClubRole =
+        effectiveRole === 'ADMIN'
+          ? 'admin'
+          : (req.user.clubRole || (user as any).clubRole || 'member');
+
       const team = user.teamId ? await dbService.getTeam(user.teamId) : null;
-      console.log(`⏱️  [AUTH_ME] duration=${Date.now() - meStart}ms authenticated=true hasTeam=${!!team}`);
+      console.log(`⏱️  [AUTH_ME] duration=${Date.now() - meStart}ms authenticated=true hasTeam=${!!team} role=${effectiveRole} clubRole=${effectiveClubRole}`);
 
       res.json({
         success: true,
@@ -431,7 +504,8 @@ export const authController = {
             id: user.id,
             email: user.email,
             username: user.username,
-            role: user.role,
+            role: effectiveRole,
+            clubRole: effectiveClubRole,
             teamId: user.teamId,
             teamName: team?.name || null,
             avatarUrl: user.avatarUrl || null,

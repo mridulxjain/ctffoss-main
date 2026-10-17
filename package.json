@@ -8,12 +8,12 @@
     "client"
   ],
   "scripts": {
-    "dev": "npm run dev --workspaces --if-present",
+    "dev": "concurrently -n shared,server,client -c yellow,blue,green \"npm run dev --workspace=@fossctf/shared\" \"npm run dev --workspace=server\" \"npm run dev --workspace=client\"",
     "test": "npm run test --workspace=server",
     "dev:server": "npm run dev --workspace=server",
     "dev:client": "npm run dev --workspace=client",
     "build": "npm run build --workspaces --if-present",
-    "build:backend": "mkdir -p dist && cp public/index.html dist/index.html && npm run build:shared && npm run db:generate --workspace=server",
+    "build:backend": "mkdir -p dist && cp public/index.html dist/index.html && cp public/ctf_foss_pixel_brutalist_favicon_256.png dist/ctf_foss_pixel_brutalist_favicon_256.png && npm run build:shared && npm run db:generate --workspace=server",
     "build:shared": "npm run build --workspace=@fossctf/shared",
     "build:server": "npm run db:generate --workspace=server && npm run build --workspace=server",
     "build:client": "npm run build --workspace=client",

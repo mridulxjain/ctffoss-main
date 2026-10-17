@@ -10,7 +10,7 @@ body {
   margin: 0;
   min-height: 100vh;
   background-color: #09090b;
-  background-image: 
+  background-image:
     radial-gradient(rgba(16, 185, 129, 0.04) 1px, transparent 1px),
     linear-gradient(to bottom, rgba(255, 255, 255, 0.01) 1px, transparent 1px);
   background-size: 24px 24px, 100% 32px;
@@ -20,7 +20,9 @@ body {
   -moz-osx-font-smoothing: grayscale;
 }
 
-code, pre, .font-mono {
+code,
+pre,
+.font-mono {
   font-family: 'Fira Code', 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
 }
 
@@ -60,7 +62,7 @@ button:focus-visible {
   font-family: 'Fira Code', monospace;
 }
 
-/* Neobrutalist Cyber Tape Stickers */
+/* Neobrutalist Cyber Tape Stickers with Wrapper Cut (Serrated) Edges */
 .sticker-tape {
   display: inline-flex;
   align-items: center;
@@ -69,15 +71,30 @@ button:focus-visible {
   font-size: 0.6875rem;
   letter-spacing: 0.08em;
   text-transform: uppercase;
-  padding: 0.25rem 0.65rem;
+  padding: 0.3rem 0.9rem;
   transform: rotate(-1.5deg);
-  box-shadow: 2px 2px 0px #000;
-  transition: transform 0.15s ease, box-shadow 0.15s ease;
+  filter: drop-shadow(2px 2px 0px #000);
+  clip-path: polygon(
+    0% 0%,
+    calc(100% - 6px) 0%,
+    100% 20%,
+    calc(100% - 6px) 40%,
+    100% 60%,
+    calc(100% - 6px) 80%,
+    100% 100%,
+    0% 100%,
+    6px 80%,
+    0% 60%,
+    6px 40%,
+    0% 20%
+  );
+  transition: transform 0.15s ease, filter 0.15s ease;
   user-select: none;
 }
+
 .sticker-tape:hover {
-  transform: rotate(0deg) scale(1.05);
-  box-shadow: 3px 3px 0px #000;
+  transform: rotate(0deg) scale(1.04);
+  filter: drop-shadow(3px 3px 0px #000);
 }
 
 .sticker-tape-right {
@@ -88,15 +105,30 @@ button:focus-visible {
   font-size: 0.6875rem;
   letter-spacing: 0.08em;
   text-transform: uppercase;
-  padding: 0.25rem 0.65rem;
+  padding: 0.3rem 0.9rem;
   transform: rotate(1.5deg);
-  box-shadow: 2px 2px 0px #000;
-  transition: transform 0.15s ease, box-shadow 0.15s ease;
+  filter: drop-shadow(2px 2px 0px #000);
+  clip-path: polygon(
+    0% 0%,
+    calc(100% - 6px) 0%,
+    100% 20%,
+    calc(100% - 6px) 40%,
+    100% 60%,
+    calc(100% - 6px) 80%,
+    100% 100%,
+    0% 100%,
+    6px 80%,
+    0% 60%,
+    6px 40%,
+    0% 20%
+  );
+  transition: transform 0.15s ease, filter 0.15s ease;
   user-select: none;
 }
+
 .sticker-tape-right:hover {
-  transform: rotate(0deg) scale(1.05);
-  box-shadow: 3px 3px 0px #000;
+  transform: rotate(0deg) scale(1.04);
+  filter: drop-shadow(3px 3px 0px #000);
 }
 
 /* Refined tech card containers */
@@ -108,10 +140,13 @@ button:focus-visible {
 
 /* Spark Loader 3-Spark Scale Animation */
 @keyframes spark-scale-pulse {
-  0%, 100% {
+
+  0%,
+  100% {
     transform: scale(0.45);
     opacity: 0.35;
   }
+
   50% {
     transform: scale(1.25);
     opacity: 1;
@@ -132,6 +167,7 @@ button:focus-visible {
 
 /* Accessibility: Respect prefers-reduced-motion */
 @media (prefers-reduced-motion: reduce) {
+
   *,
   *::before,
   *::after {
@@ -140,6 +176,7 @@ button:focus-visible {
     transition-duration: 0.01ms !important;
     scroll-behavior: auto !important;
   }
+
   .sticker-tape,
   .sticker-tape-right,
   .animate-spark-1,

@@ -4,12 +4,11 @@ import { useAuth } from '../context/AuthContext';
 import {
   Users,
   AlertCircle,
-  Info,
-  ExternalLink,
   Timer,
-  Award,
-  Radio,
+  Zap,
+  CheckCircle2,
   Shield,
+  HelpCircle,
 } from 'lucide-react';
 import { formatElapsedDuration, type TeamDTO, type CompetitionAttemptDTO } from '@fossctf/shared';
 
@@ -42,84 +41,106 @@ export const TeamPage: React.FC = () => {
   }, [user?.teamId]);
 
   return (
-    <div className="max-w-5xl mx-auto px-4 sm:px-6 py-8 space-y-8">
-      {/* Top Section Indicator */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-zinc-800/80 pb-4">
-        <div className="flex items-center gap-2 font-mono text-xs text-zinc-400 uppercase tracking-wider">
-          <span className="text-emerald-400 font-semibold">&gt;_ SQUAD TERMINAL</span>
-          <span className="text-zinc-700">/</span>
-          <span>Squad Operations</span>
-          <span className="text-zinc-700">/</span>
-          <span className="text-emerald-400 font-semibold">Roster & Attempts</span>
+    <div className="max-w-5xl mx-auto px-4 sm:px-6 py-8 space-y-6">
+      {/* Clean Architectural Eyebrow & Header */}
+      <div className="space-y-3 pb-3 border-b-2 border-black">
+        <div className="flex items-center justify-between text-xs font-mono uppercase tracking-wider">
+          <div className="flex items-center gap-2 text-slate-400 font-bold">
+            <span className="text-[#ffd000] font-black">§ 03</span>
+            <span className="text-slate-600">&bull;</span>
+            <span className="text-white">SQUAD OPERATIONS</span>
+          </div>
+          <span className="spec-tag spec-tag-dark">ROSTER SPEC</span>
         </div>
 
-        <div className="flex items-center gap-2 flex-wrap">
-          <div className="sticker-tape bg-amber-400 text-black border border-black shadow-[2px_2px_0px_#000]">
-            CLEARANCE: SQUAD
-          </div>
-          <div className="sticker-tape-right bg-emerald-400 text-black border border-black shadow-[2px_2px_0px_#000]">
-            MERGE SMALL, MERGE OFTEN
-          </div>
+        <div className="flex flex-col sm:flex-row sm:items-baseline justify-between gap-3">
+          <h1 className="text-3xl sm:text-4xl font-black font-display tracking-tight text-white uppercase">
+            Squad Operations
+          </h1>
         </div>
-      </div>
 
-      {/* Main Header */}
-      <div className="space-y-2">
-        <h1 className="text-2xl sm:text-4xl font-bold font-mono tracking-tight text-zinc-100 uppercase">
-          Squad Operations
-        </h1>
-        <p className="text-xs sm:text-sm font-mono text-zinc-400 max-w-2xl leading-relaxed">
-          Monitor your competition squad membership and synchronized Loventia attempt status.
+        <p className="text-sm text-slate-400 max-w-2xl leading-relaxed font-sans">
+          Monitor your squad membership, competition track parameters, and synchronized attempt status for the Loventia sprint.
         </p>
       </div>
 
       {errorMsg && (
-        <div className="rounded-lg border border-rose-500/40 bg-rose-950/30 p-4 font-mono text-xs text-rose-300 flex items-center gap-2 shadow-sm">
-          <AlertCircle className="w-4 h-4 shrink-0 text-rose-400" />
+        <div className="border-2 border-black bg-[#ff3366] text-white p-4 font-mono text-xs font-bold flex items-center gap-2 shadow-[3px_3px_0px_#000]">
+          <AlertCircle className="w-4 h-4 shrink-0 stroke-[2.5]" />
           <span>{errorMsg}</span>
         </div>
       )}
 
       {/* Case 1: Participant has NO team */}
       {!user?.teamId ? (
-        <div className="max-w-xl mx-auto py-10 space-y-4">
-          <div className="rounded-xl border border-zinc-800/80 bg-zinc-950/70 p-8 space-y-5 text-center shadow-sm">
-            <div className="w-12 h-12 rounded-xl bg-zinc-900 border border-zinc-800 flex items-center justify-center text-zinc-300 mx-auto shadow-sm">
-              <Users className="w-6 h-6" />
-            </div>
-
-            <div className="space-y-2">
-              <h2 className="text-lg font-bold font-mono text-zinc-100 uppercase">
-                No Squad Assigned
-              </h2>
-              <p className="text-xs font-mono text-zinc-400 leading-relaxed max-w-md mx-auto">
-                Teams and squad memberships are managed centrally through the official{' '}
-                <strong className="text-zinc-200">FOSS Club Identity System</strong>. FOSS CTF binds your verified squad context automatically upon sign-in.
-              </p>
-            </div>
-
-            <div className="p-4 rounded-lg bg-zinc-900/70 border border-zinc-800/80 text-left font-mono text-xs text-zinc-400 space-y-2">
-              <div className="flex items-center gap-2 text-zinc-200 font-semibold uppercase text-[11px]">
-                <Info className="w-4 h-4 text-emerald-400 shrink-0" />
-                <span>How to participate with a squad:</span>
+        <div className="space-y-6">
+          <div className="rulebook-card p-6 sm:p-8 space-y-6">
+            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 pb-6 border-b-2 border-black">
+              <div className="flex items-center gap-4">
+                <div className="w-12 h-12 bg-[#ffd000] text-black border-2 border-black shadow-[3px_3px_0px_#000] flex items-center justify-center shrink-0">
+                  <Users className="w-6 h-6 stroke-[2.5]" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <h2 className="text-xl sm:text-2xl font-black font-display text-white uppercase tracking-tight">
+                      No Squad Assigned
+                    </h2>
+                    <span className="spec-tag spec-tag-accent text-[10px]">UNLINKED</span>
+                  </div>
+                  <p className="text-xs text-slate-400 font-sans mt-0.5">
+                    Your account is currently registered as an independent operative.
+                  </p>
+                </div>
               </div>
-              <ul className="list-disc list-inside space-y-1 text-zinc-400 text-xs pl-1">
-                <li>Log in to the FOSS Club member portal.</li>
-                <li>Join or create your competition squad there.</li>
-                <li>Return to FOSS CTF and your team context will sync automatically.</li>
-              </ul>
             </div>
 
-            <div className="pt-2">
-              <a
-                href="https://fossclub.tech"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="inline-flex items-center gap-2 px-5 py-2.5 rounded-md bg-emerald-500 hover:bg-emerald-400 active:bg-emerald-600 text-zinc-950 font-mono font-semibold text-xs uppercase tracking-wider border border-emerald-400 shadow-sm transition-colors"
-              >
-                <span>Open FOSS Club Portal</span>
-                <ExternalLink className="w-3.5 h-3.5" />
-              </a>
+            {/* 3-Step Setup Blueprint */}
+            <div className="space-y-3">
+              <span className="text-xs font-mono font-bold uppercase tracking-wider text-slate-400 block">
+                How Squad Sync Works:
+              </span>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div className="p-4 bg-[#141a27] border-2 border-black shadow-[2px_2px_0px_#000] space-y-1.5">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[10px] font-mono font-black text-[#ffd000]">STEP 01</span>
+                    <Users className="w-3.5 h-3.5 text-slate-400" />
+                  </div>
+                  <h3 className="font-bold text-white text-sm">Join or Form Squad</h3>
+                  <p className="text-xs text-slate-400 leading-relaxed font-sans">
+                    Log in to the central FOSS Club portal to create your team and invite squad members.
+                  </p>
+                </div>
+
+                <div className="p-4 bg-[#141a27] border-2 border-black shadow-[2px_2px_0px_#000] space-y-1.5">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[10px] font-mono font-black text-[#00f0ff]">STEP 02</span>
+                    <Shield className="w-3.5 h-3.5 text-slate-400" />
+                  </div>
+                  <h3 className="font-bold text-white text-sm">Sign In to CTF</h3>
+                  <p className="text-xs text-slate-400 leading-relaxed font-sans">
+                    Use your same FOSS Club account credentials. FOSS CTF automatically resolves your squad context.
+                  </p>
+                </div>
+
+                <div className="p-4 bg-[#141a27] border-2 border-black shadow-[2px_2px_0px_#000] space-y-1.5">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[10px] font-mono font-black text-emerald-400">STEP 03</span>
+                    <Zap className="w-3.5 h-3.5 text-slate-400" />
+                  </div>
+                  <h3 className="font-bold text-white text-sm">Compete & Score</h3>
+                  <p className="text-xs text-slate-400 leading-relaxed font-sans">
+                    Flag captures submit under your squad's name, syncing solve times with the synchronized speed ledger.
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            {/* Operative Note */}
+            <div className="p-4 bg-[#141a27] border-2 border-black text-xs text-slate-300 font-sans flex items-start gap-3">
+              <HelpCircle className="w-4 h-4 text-[#ffd000] shrink-0 mt-0.5" />
+              <p className="leading-relaxed">
+                <strong className="text-white">Note for solo participants:</strong> You can still explore challenges and verify flag payloads locally. To appear on the official verified speed podium, an active squad affiliation is required.
+              </p>
             </div>
           </div>
         </div>
@@ -128,49 +149,53 @@ export const TeamPage: React.FC = () => {
         <div className="space-y-6">
           {/* Squad Metrics Row */}
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-            <div className="rounded-xl border border-zinc-800/80 bg-zinc-900/40 p-5 space-y-1 shadow-sm">
-              <div className="text-[10px] font-mono text-zinc-500 uppercase tracking-wider flex items-center justify-between">
+            <div className="rulebook-card p-5 space-y-2">
+              <div className="text-[10px] font-mono text-slate-400 uppercase tracking-wider flex items-center justify-between font-bold">
                 <span>Squad Identity</span>
-                <Users className="w-3.5 h-3.5 text-zinc-400" />
+                <Users className="w-3.5 h-3.5 text-slate-400" />
               </div>
-              <div className="text-lg sm:text-xl font-bold font-mono text-zinc-100 truncate">
+              <div className="text-xl font-black font-display text-white truncate uppercase">
                 {team?.name || 'Your Squad'}
               </div>
-              <p className="text-[10px] text-zinc-500 font-mono truncate">
-                UUID: {user.teamId}
+              <p className="text-[10px] text-slate-400 font-sans pt-1 border-t border-slate-800">
+                Official affiliated squad roster
               </p>
             </div>
 
-            <div className="rounded-xl border border-emerald-500/30 bg-emerald-950/20 p-5 space-y-1 shadow-sm">
-              <div className="text-[10px] font-mono text-emerald-400 uppercase tracking-wider flex items-center justify-between font-semibold">
+            <div className="rulebook-card p-5 space-y-2">
+              <div className="text-[10px] font-mono text-[#00f0ff] uppercase tracking-wider flex items-center justify-between font-bold">
                 <span>Competition Track</span>
-                <Award className="w-3.5 h-3.5 text-emerald-400" />
+                <Zap className="w-3.5 h-3.5 text-[#00f0ff] fill-[#00f0ff]" />
               </div>
-              <div className="text-lg sm:text-xl font-bold text-emerald-400 font-mono">
+              <div className="text-xl font-black text-[#00f0ff] font-display uppercase flex items-center gap-1.5">
                 SPEED SPRINT
               </div>
-              <p className="text-[10px] text-zinc-400 font-mono">
-                Ranked by verified elapsed duration
+              <p className="text-[10px] text-slate-400 font-sans pt-1 border-t border-slate-800">
+                Ranked strictly by verified elapsed duration
               </p>
             </div>
 
-            <div className="rounded-xl border border-amber-500/30 bg-amber-950/20 p-5 space-y-1 shadow-sm">
-              <div className="text-[10px] font-mono text-amber-400 uppercase tracking-wider flex items-center justify-between font-semibold">
-                <span>Loventia Attempt</span>
-                <Timer className="w-3.5 h-3.5 text-amber-400" />
+            <div className="rulebook-card p-5 space-y-2">
+              <div className="text-[10px] font-mono text-[#ffd000] uppercase tracking-wider flex items-center justify-between font-bold">
+                <span>Attempt Status</span>
+                <Timer className="w-3.5 h-3.5 text-[#ffd000] stroke-[2.5]" />
               </div>
-              <div className="text-lg sm:text-xl font-bold font-mono">
+              <div className="text-xl font-black font-mono">
                 {compAttempt?.status === 'COMPLETED' ? (
-                  <span className="text-emerald-400 font-mono">
-                    {compAttempt.elapsedSeconds ? formatElapsedDuration(compAttempt.elapsedSeconds * 1000) : 'SOLVED'}
+                  <span className="text-[#00f0ff] flex items-center gap-1.5">
+                    <CheckCircle2 className="w-4 h-4 stroke-[3]" />
+                    <span>{compAttempt.elapsedSeconds ? formatElapsedDuration(compAttempt.elapsedSeconds * 1000) : 'SOLVED'}</span>
                   </span>
                 ) : compAttempt?.status === 'IN_PROGRESS' ? (
-                  <span className="text-amber-400 text-sm">Attempt Running</span>
+                  <span className="text-[#ffd000] text-sm flex items-center gap-1.5 font-bold">
+                    <span className="w-2 h-2 bg-[#ffd000] animate-pulse" />
+                    <span>Attempt In Flight</span>
+                  </span>
                 ) : (
-                  <span className="text-zinc-500 text-sm">Staging</span>
+                  <span className="text-slate-400 text-sm font-bold">Staging</span>
                 )}
               </div>
-              <p className="text-[10px] text-zinc-400 font-mono">
+              <p className="text-[10px] text-slate-400 font-sans pt-1 border-t border-slate-800">
                 {compAttempt?.status === 'COMPLETED'
                   ? 'Flag captured and verified'
                   : 'Synchronized competition target'}
@@ -179,91 +204,93 @@ export const TeamPage: React.FC = () => {
           </div>
 
           {/* Squad Roster Table */}
-          <div className="rounded-xl border border-zinc-800/80 bg-zinc-950/70 shadow-sm overflow-hidden">
-            <div className="px-5 py-4 bg-zinc-900/80 border-b border-zinc-800/80 flex items-center justify-between">
+          <section className="rulebook-card overflow-hidden">
+            <div className="p-4 sm:p-5 border-b-2 border-black bg-[#161d2d] flex items-center justify-between">
               <div className="flex items-center gap-2">
-                <Users className="w-4 h-4 text-emerald-400" />
-                <h2 className="text-xs font-semibold text-zinc-100 uppercase tracking-wider font-mono">
-                  Squad Roster ({teamDetails?.members?.length || 1} Members)
+                <Users className="w-4 h-4 text-[#ffd000]" />
+                <h2 className="text-sm font-black text-white uppercase tracking-wider font-display">
+                  Squad Member Roster ({teamDetails?.members?.length || 1} Members)
                 </h2>
               </div>
-              <span className="text-[10px] font-mono text-zinc-500 uppercase">
-                Central FOSS Club sync
+
+              <span className="text-[10px] font-mono text-slate-400 uppercase font-bold">
+                Synced with FOSS Club
               </span>
             </div>
 
             <div className="overflow-x-auto">
               <table className="w-full text-left font-mono text-xs">
-                <thead className="bg-zinc-950/80 border-b border-zinc-800/80 text-zinc-400 text-[11px] uppercase">
+                <thead className="bg-[#121724] border-b-2 border-black text-slate-300 text-[11px] uppercase font-bold">
                   <tr>
                     <th className="px-5 py-3">Member</th>
                     <th className="px-5 py-3">Username</th>
-                    <th className="px-5 py-3">Role</th>
                     <th className="px-5 py-3 text-right">Status</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-zinc-800/60">
+                <tbody className="divide-y-2 divide-black">
                   {teamDetails?.members && teamDetails.members.length > 0 ? (
                     teamDetails.members.map((m) => {
                       const isCurrentUser = m.id === user.id;
+                      const isMemberLoggedIn = isCurrentUser || Boolean(m.isLoggedIn);
                       return (
                         <tr
                           key={m.id}
-                          className={`transition-colors hover:bg-zinc-900/50 ${
-                            isCurrentUser ? 'bg-emerald-950/15' : ''
+                          className={`transition-colors hover:bg-[#151c2c] ${
+                            isCurrentUser ? 'bg-[#00f0ff]/5' : ''
                           }`}
                         >
-                          <td className="px-5 py-3.5 font-semibold text-zinc-100">
+                          <td className="px-5 py-3.5 font-bold text-white font-sans">
                             <div className="flex items-center gap-2">
                               <span>{m.displayName || m.username}</span>
                               {isCurrentUser && (
-                                <span className="text-[9px] font-mono px-1.5 py-0.2 bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 uppercase rounded font-bold">
+                                <span className="text-[9px] font-mono px-1.5 py-0.2 bg-[#00f0ff] text-black border border-black uppercase font-black shadow-[1px_1px_0px_#000]">
                                   You
                                 </span>
                               )}
                             </div>
                           </td>
-                          <td className="px-5 py-3.5 text-zinc-400">
+                          <td className="px-5 py-3.5 text-slate-400">
                             @{m.username}
                           </td>
-                          <td className="px-5 py-3.5">
-                            <span className={`px-2 py-0.5 rounded text-[10px] font-semibold border ${
-                              m.role === 'ADMIN'
-                                ? 'bg-purple-950/60 text-purple-300 border-purple-800/60'
-                                : 'bg-zinc-900 text-zinc-300 border-zinc-700/60'
-                            }`}>
-                              {m.role}
-                            </span>
-                          </td>
-                          <td className="px-5 py-3.5 text-right text-emerald-400 font-semibold text-xs">
-                            ACTIVE
+                          <td className="px-5 py-3.5 text-right font-black text-xs">
+                            {isMemberLoggedIn ? (
+                              <span className="inline-flex items-center gap-1.5 text-emerald-400">
+                                <span className="w-1.5 h-1.5 bg-emerald-400" />
+                                <span>ACTIVE</span>
+                              </span>
+                            ) : (
+                              <span className="inline-flex items-center gap-1.5 text-zinc-500">
+                                <span className="w-1.5 h-1.5 bg-zinc-600" />
+                                <span>OFFLINE</span>
+                              </span>
+                            )}
                           </td>
                         </tr>
                       );
                     })
                   ) : (
                     <tr>
-                      <td className="px-5 py-3.5 font-semibold text-zinc-100">
+                      <td className="px-5 py-3.5 font-bold text-white font-sans">
                         {user.username}
-                        <span className="ml-2 text-[9px] font-mono px-1.5 py-0.2 bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 uppercase rounded font-bold">
+                        <span className="ml-2 text-[9px] font-mono px-1.5 py-0.2 bg-[#00f0ff] text-black border border-black uppercase font-black shadow-[1px_1px_0px_#000]">
                           You
                         </span>
                       </td>
-                      <td className="px-5 py-3.5 text-zinc-400">
+                      <td className="px-5 py-3.5 text-slate-400">
                         @{user.username}
                       </td>
-                      <td className="px-5 py-3.5 text-zinc-400">
-                        {user.role}
-                      </td>
-                      <td className="px-5 py-3.5 text-right text-emerald-400 font-semibold text-xs">
-                        ACTIVE
+                      <td className="px-5 py-3.5 text-right font-black text-xs">
+                        <span className="inline-flex items-center gap-1.5 text-emerald-400">
+                          <span className="w-1.5 h-1.5 bg-emerald-400" />
+                          <span>ACTIVE</span>
+                        </span>
                       </td>
                     </tr>
                   )}
                 </tbody>
               </table>
             </div>
-          </div>
+          </section>
         </div>
       )}
     </div>

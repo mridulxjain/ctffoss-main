@@ -30,6 +30,7 @@ export interface DBUser {
   email: string;
   username: string;
   role: Role;
+  clubRole?: string | null;
   teamId: string | null;
   oidcSub?: string | null;
   avatarUrl?: string | null;
@@ -391,6 +392,18 @@ class MemoryCTFStore {
       createdAt: new Date(),
     };
 
+    const userMridul: DBUser = {
+      id: '70162e23-8052-4012-8747-2c5ea2f1476b',
+      email: 'krishnajain2604@gmail.com',
+      username: 'mridulxjain',
+      role: 'ADMIN',
+      clubRole: 'admin',
+      teamId: null,
+      oidcSub: '841b83a8-b0ef-4da6-92b1-1db1c812fb80',
+      createdAt: new Date(),
+    };
+
+    this.users.set(userMridul.id, userMridul);
     this.users.set(adminUser.id, adminUser);
     this.users.set(userAlice.id, userAlice);
     this.users.set(userBob.id, userBob);
@@ -466,7 +479,7 @@ export async function checkPrisma(): Promise<boolean> {
   try {
     await Promise.race([
       prisma.$queryRaw`SELECT 1`,
-      new Promise((_, reject) => setTimeout(() => reject(new Error('PostgreSQL ping timeout')), 1000)),
+      new Promise((_, reject) => setTimeout(() => reject(new Error('PostgreSQL ping timeout')), 8000)),
     ]);
     activeDriver = 'postgres';
     return true;
@@ -493,7 +506,7 @@ export const dbService = {
     try {
       await Promise.race([
         prisma.$queryRaw`SELECT 1`,
-        new Promise((_, reject) => setTimeout(() => reject(new Error('Ping timeout')), 2000)),
+        new Promise((_, reject) => setTimeout(() => reject(new Error('Ping timeout')), 8000)),
       ]);
       return true;
     } catch {
@@ -642,6 +655,58 @@ export const dbService = {
       throw new Error('User not found');
     }
     user.teamId = teamId;
+    return user;
+  },
+
+  async updateUser(
+    userId: string,
+    data: {
+      role?: Role;
+      teamId?: string | null;
+      avatarUrl?: string | null;
+      oidcSub?: string | null;
+      username?: string;
+      email?: string;
+      clubRole?: string | null;
+    }
+  ): Promise<DBUser> {
+    const hasDb = await checkPrisma();
+    if (hasDb) {
+      const u = await prisma.user.update({
+        where: { id: userId },
+        data: {
+          ...(data.role ? { role: data.role } : {}),
+          ...(data.teamId !== undefined ? { teamId: data.teamId } : {}),
+          ...(data.avatarUrl !== undefined ? { avatarUrl: data.avatarUrl } : {}),
+          ...(data.oidcSub !== undefined ? { oidcSub: data.oidcSub } : {}),
+          ...(data.username ? { username: data.username } : {}),
+          ...(data.email ? { email: data.email } : {}),
+        },
+      });
+      return {
+        id: u.id,
+        email: u.email,
+        username: u.username,
+        role: u.role as Role,
+        clubRole: data.clubRole,
+        teamId: u.teamId,
+        oidcSub: u.oidcSub,
+        avatarUrl: u.avatarUrl,
+        createdAt: u.createdAt,
+      };
+    }
+
+    const user = memoryStore.users.get(userId);
+    if (!user) {
+      throw new Error('User not found');
+    }
+    if (data.role) user.role = data.role;
+    if (data.teamId !== undefined) user.teamId = data.teamId;
+    if (data.avatarUrl !== undefined) user.avatarUrl = data.avatarUrl;
+    if (data.oidcSub !== undefined) user.oidcSub = data.oidcSub;
+    if (data.username) user.username = data.username;
+    if (data.email) user.email = data.email;
+    if (data.clubRole !== undefined) user.clubRole = data.clubRole;
     return user;
   },
 

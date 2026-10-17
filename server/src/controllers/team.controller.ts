@@ -1,5 +1,6 @@
 import { Request, Response } from 'express';
 import { dbService } from '../services/db.service';
+import { isUserActive } from '../middleware/auth';
 
 export const teamController = {
   /**
@@ -42,12 +43,17 @@ export const teamController = {
         totalAvailableChallenges: team.totalAvailableChallenges ?? 0,
         rank: team.rank,
         solves: team.solves ?? [],
-        members: team.members.map((m) => ({
-          id: m.id,
-          username: m.username,
-          email: m.email,
-          role: m.role,
-        })),
+        members: team.members.map((m) => {
+          const isCurrentUser = req.user?.id === m.id;
+          const isMemberLoggedIn = isCurrentUser || isUserActive(m.id);
+          return {
+            id: m.id,
+            username: m.username,
+            email: m.email,
+            role: m.role,
+            isLoggedIn: isMemberLoggedIn,
+          };
+        }),
         createdAt: team.createdAt.toISOString(),
       },
     });

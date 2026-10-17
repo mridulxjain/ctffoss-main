@@ -223,12 +223,14 @@ export const LEGACY_TEST_ACCOUNTS = [
  * Set of all allowed development emails and usernames for fast lookup in devLogin
  */
 export const ALLOWED_DEV_EMAILS = new Set([
+  'krishnajain2604@gmail.com',
   DEV_ADMIN.email.toLowerCase(),
   ...DEV_PARTICIPANTS.map((p) => p.email.toLowerCase()),
   ...LEGACY_TEST_ACCOUNTS.map((a) => a.email.toLowerCase()),
 ]);
 
 export const ALLOWED_DEV_USERNAMES = new Set([
+  'mridulxjain',
   DEV_ADMIN.username.toLowerCase(),
   ...DEV_PARTICIPANTS.map((p) => p.username.toLowerCase()),
   ...LEGACY_TEST_ACCOUNTS.map((a) => a.username.toLowerCase()),

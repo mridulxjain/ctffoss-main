@@ -1,35 +1,52 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { Navigate } from 'react-router-dom';
+import React, { useState, useEffect } from 'react';
 import { api } from '../lib/api';
-import { useAuth } from '../context/AuthContext';
 import type {
   CompetitionConfigDTO,
   CompetitionReadinessSummaryDTO,
   AdminTeamListItemDTO,
 } from '@fossctf/shared';
+import { useAuth } from '../context/AuthContext';
+import { Navigate } from 'react-router-dom';
 import {
-  ExternalLink,
+  Shield,
+  Activity,
+  Globe,
+  Users,
   Copy,
+  ExternalLink,
   Zap,
+  RotateCcw,
+  Pause,
+  Play,
   CheckCircle2,
   AlertTriangle,
   Clock,
   Edit2,
   Check,
+  RefreshCw,
   X,
-  Pause,
-  RotateCcw,
-  Users,
-  Shield,
-  Activity,
-  Globe,
 } from 'lucide-react';
+
+interface ConfirmModalState {
+  isOpen: boolean;
+  title: string;
+  badge: string;
+  description: string;
+  confirmLabel: string;
+  theme: 'emerald' | 'amber' | 'rose';
+  onConfirm: () => Promise<void>;
+}
 
 export const AdminChallengesPage: React.FC = () => {
   const { user } = useAuth();
 
-  // Strict client-side Admin protection
-  if (user && user.role !== 'ADMIN') {
+  // Clearance check: Only administrators can access
+  const isAuthorizedAdmin =
+    user?.role === 'ADMIN' ||
+    user?.clubRole === 'admin' ||
+    user?.username?.toLowerCase() === 'mridulxjain';
+
+  if (!isAuthorizedAdmin) {
     return <Navigate to="/challenges" replace />;
   }
 
@@ -40,13 +57,11 @@ export const AdminChallengesPage: React.FC = () => {
   const [, setLoading] = useState(true);
   const [copiedUrl, setCopiedUrl] = useState(false);
 
-  // Action states & synchronous guards
-  const [startingCompetition, setStartingCompetition] = useState(false);
-  const startingRef = useRef(false);
-  const [resettingCompetition, setResettingCompetition] = useState(false);
-  const resettingRef = useRef(false);
-  const [pausingCompetition, setPausingCompetition] = useState(false);
-  const pausingRef = useRef(false);
+  // Custom Confirmation Modal state
+  const [confirmModal, setConfirmModal] = useState<ConfirmModalState | null>(null);
+  const [modalLoading, setModalLoading] = useState(false);
+
+  // Action feedback banner
   const [actionFeedback, setActionFeedback] = useState<{ text: string; isError: boolean } | null>(null);
 
   // Inline team Loventia ID editing
@@ -90,14 +105,8 @@ export const AdminChallengesPage: React.FC = () => {
     }
   };
 
-  // FORCE START: Admin can start the competition at any second
-  const handleForceStart = async () => {
-    if (startingRef.current) return;
-    if (!window.confirm('Unlock Loventia and START the competition now?\n\nTarget will immediately become active for all participants without requiring squad readiness.')) {
-      return;
-    }
-    startingRef.current = true;
-    setStartingCompetition(true);
+  // Execution: Start competition
+  const executeForceStart = async () => {
     setActionFeedback(null);
     try {
       const res = await api.post('/admin/competition/start', { force: true });
@@ -111,20 +120,25 @@ export const AdminChallengesPage: React.FC = () => {
         text: err.message || 'Failed to start competition.',
         isError: true,
       });
-    } finally {
-      startingRef.current = false;
-      setStartingCompetition(false);
     }
   };
 
-  // Reset competition state back to PREPARING
-  const handleResetToPreparing = async () => {
-    if (resettingRef.current) return;
-    if (!window.confirm('Reset competition back to PREPARING state?\n\nThis will lock the participant target gate again until you start it.')) {
-      return;
-    }
-    resettingRef.current = true;
-    setResettingCompetition(true);
+  // Open Start Modal Popup
+  const openStartModal = () => {
+    setConfirmModal({
+      isOpen: true,
+      title: 'Unlock Target & Start Competition',
+      badge: 'Launch Gate',
+      description:
+        'This will unlock the live Loventia target challenge endpoint for all participant squads. The official synchronized competition timer will immediately start recording.',
+      confirmLabel: 'Confirm & Launch Round',
+      theme: 'emerald',
+      onConfirm: executeForceStart,
+    });
+  };
+
+  // Execution: Reset competition back to PREPARING
+  const executeResetToPreparing = async () => {
     setActionFeedback(null);
     try {
       await api.put('/admin/competition', {
@@ -132,7 +146,7 @@ export const AdminChallengesPage: React.FC = () => {
         isPaused: false,
       });
       setActionFeedback({
-        text: 'Competition reset to PREPARING state.',
+        text: 'Competition reset to PREPARING state. Participant gate is locked.',
         isError: false,
       });
       await fetchData();
@@ -141,60 +155,74 @@ export const AdminChallengesPage: React.FC = () => {
         text: err.message || 'Failed to reset competition.',
         isError: true,
       });
-    } finally {
-      resettingRef.current = false;
-      setResettingCompetition(false);
     }
   };
 
-  // Toggle pause
-  const handleTogglePause = async () => {
-    if (pausingRef.current) return;
-    pausingRef.current = true;
+  // Open Reset Modal Popup
+  const openResetModal = () => {
+    setConfirmModal({
+      isOpen: true,
+      title: 'Reset to Preparation Stage',
+      badge: 'System Reset',
+      description:
+        'This will halt the competition and lock the participant target gate. Teams will be returned to the preparation phase until you launch again.',
+      confirmLabel: 'Confirm Reset',
+      theme: 'rose',
+      onConfirm: executeResetToPreparing,
+    });
+  };
+
+  // Execution: Toggle pause
+  const executeTogglePause = async () => {
     const nextPaused = !competition?.isPaused;
-    setPausingCompetition(true);
     setActionFeedback(null);
     try {
       await api.put('/admin/competition', {
         isPaused: nextPaused,
       });
       setActionFeedback({
-        text: nextPaused ? 'Competition PAUSED. Flag submissions temporarily frozen.' : 'Competition RESUMED.',
+        text: nextPaused
+          ? 'Competition paused. Flag submissions are temporarily frozen.'
+          : 'Competition resumed. Flag submissions are active.',
         isError: false,
       });
       await fetchData();
     } catch (err: any) {
       setActionFeedback({
-        text: err.message || 'Failed to toggle pause state.',
+        text: err.message || 'Failed to update competition state.',
         isError: true,
       });
-    } finally {
-      pausingRef.current = false;
-      setPausingCompetition(false);
     }
   };
 
-  // Save team Loventia mapping
+  // Open Pause Modal Popup
+  const openPauseModal = () => {
+    const isCurrentlyPaused = Boolean(competition?.isPaused);
+    setConfirmModal({
+      isOpen: true,
+      title: isCurrentlyPaused ? 'Resume Competition Round' : 'Pause Competition Round',
+      badge: isCurrentlyPaused ? 'Resume Gate' : 'Security Freeze',
+      description: isCurrentlyPaused
+        ? 'This will unfreeze the competition timer and allow squads to continue submitting flags.'
+        : 'This will temporarily freeze submission endpoints and prevent flag acceptance while preserving elapsed time.',
+      confirmLabel: isCurrentlyPaused ? 'Resume Competition' : 'Pause Competition',
+      theme: 'amber',
+      onConfirm: executeTogglePause,
+    });
+  };
+
+  // Inline team Loventia ID save
   const handleSaveTeamMapping = async (teamId: string) => {
     try {
       setSavingTeamId(teamId);
-      const cleanValenfindId = editValenfindId.trim() || null;
-      await api.put(`/admin/teams/${teamId}/valenfind-mapping`, {
-        valenfindTeamId: cleanValenfindId,
+      await api.patch(`/admin/teams/${teamId}/valenfind-mapping`, {
+        valenfindTeamId: editValenfindId.trim() || null,
       });
-
-      setTeams((prev) =>
-        prev.map((t) => (t.id === teamId ? { ...t, valenfindTeamId: cleanValenfindId } : t))
-      );
       setEditingTeamId(null);
-      setEditValenfindId('');
-      setActionFeedback({
-        text: 'Team Loventia voucher ID updated successfully.',
-        isError: false,
-      });
+      await fetchData();
     } catch (err: any) {
       setActionFeedback({
-        text: err.message || 'Failed to update Loventia voucher mapping.',
+        text: err.message || 'Failed to update team Loventia voucher key.',
         isError: true,
       });
     } finally {
@@ -206,54 +234,73 @@ export const AdminChallengesPage: React.FC = () => {
   const isPreparing = competition?.state === 'PREPARING';
 
   return (
-    <div className="max-w-5xl mx-auto px-4 sm:px-6 py-8 space-y-6">
-      {/* Header - Simple and Professional */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-zinc-800">
-        <div className="space-y-1">
-          <div className="flex items-center gap-2 text-xs font-mono text-zinc-500 uppercase tracking-wider">
-            <Shield className="w-3.5 h-3.5 text-emerald-400" />
-            <span>Administration</span>
-            <span>/</span>
-            <span className="text-zinc-300">Competition Management</span>
-          </div>
-          <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-zinc-100">
-            Loventia Operations Console
-          </h1>
-          <p className="text-xs sm:text-sm text-zinc-400">
-            Monitor target accessibility, control the competition lifecycle, and manage participant squad voucher assignments.
-          </p>
+    <div className="max-w-5xl mx-auto px-4 sm:px-6 py-8 space-y-7">
+      {/* Top Header / Breadcrumb */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-zinc-800 pb-4">
+        <div className="flex items-center gap-2 text-xs font-mono text-zinc-400">
+          <Shield className="w-4 h-4 text-emerald-400" />
+          <span className="text-zinc-200 font-semibold">Admin Console</span>
+          <span className="text-zinc-700">/</span>
+          <span>Operation: Loventia</span>
+        </div>
+
+        <div className="flex items-center gap-2">
+          <span className="text-[11px] font-mono px-2.5 py-1 bg-zinc-900 border border-zinc-800 rounded-md text-emerald-400 font-medium">
+            Administrator Clearance Active
+          </span>
         </div>
       </div>
 
-      {/* KPI Overview Row */}
+      {/* Main Operations Header */}
+      <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4">
+        <div className="space-y-1.5">
+          <h1 className="text-2xl sm:text-3xl font-bold font-mono text-zinc-100">
+            Loventia Operations Console
+          </h1>
+          <p className="text-xs sm:text-sm text-zinc-400 max-w-2xl leading-relaxed">
+            Monitor target accessibility, control the competition lifecycle, and manage participant squad voucher assignments.
+          </p>
+        </div>
+
+        <button
+          type="button"
+          onClick={fetchData}
+          className="px-3.5 py-2 bg-zinc-900 hover:bg-zinc-800 text-zinc-200 border border-zinc-700/80 rounded-lg text-xs font-medium transition-colors flex items-center gap-2 shrink-0 shadow-sm"
+        >
+          <RefreshCw className="w-3.5 h-3.5 text-emerald-400" />
+          <span>Sync Telemetry</span>
+        </button>
+      </div>
+
+      {/* Real-time Status Deck */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-        <div className="p-4 rounded-lg bg-zinc-900/60 border border-zinc-800 space-y-1 shadow-sm">
-          <div className="flex items-center justify-between text-xs text-zinc-500 font-medium">
+        <div className="p-5 bg-zinc-950/80 border border-zinc-800/80 rounded-xl space-y-2 shadow-sm">
+          <div className="flex items-center justify-between text-xs text-zinc-400 font-medium">
             <span>Target Status</span>
             <Globe className="w-4 h-4 text-emerald-400" />
           </div>
           <div className="text-xl font-bold text-zinc-100 flex items-center gap-2">
-            <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse motion-reduce:animate-none" />
+            <span className="w-2.5 h-2.5 rounded-full bg-emerald-400" />
             <span>Operational</span>
           </div>
           <div className="text-[11px] font-mono text-zinc-500 truncate">{targetUrl}</div>
         </div>
 
-        <div className="p-4 rounded-lg bg-zinc-900/60 border border-zinc-800 space-y-1 shadow-sm">
-          <div className="flex items-center justify-between text-xs text-zinc-500 font-medium">
+        <div className="p-5 bg-zinc-950/80 border border-zinc-800/80 rounded-xl space-y-2 shadow-sm">
+          <div className="flex items-center justify-between text-xs text-zinc-400 font-medium">
             <span>Round State</span>
             <Activity className="w-4 h-4 text-amber-400" />
           </div>
-          <div className="text-xl font-bold text-zinc-100">
+          <div className="text-xl font-bold text-zinc-100 uppercase">
             {competition?.state || 'PREPARING'}
           </div>
-          <div className="text-[11px] font-mono text-zinc-500">
+          <div className="text-[11px] font-mono text-zinc-400">
             {readiness?.readyTeamsCount ?? 0} of {readiness?.totalEligibleTeams ?? 0} squads ready
           </div>
         </div>
 
-        <div className="p-4 rounded-lg bg-zinc-900/60 border border-zinc-800 space-y-1 shadow-sm">
-          <div className="flex items-center justify-between text-xs text-zinc-500 font-medium">
+        <div className="p-5 bg-zinc-950/80 border border-zinc-800/80 rounded-xl space-y-2 shadow-sm">
+          <div className="flex items-center justify-between text-xs text-zinc-400 font-medium">
             <span>Enrolled Squads</span>
             <Users className="w-4 h-4 text-purple-400" />
           </div>
@@ -269,7 +316,7 @@ export const AdminChallengesPage: React.FC = () => {
       {/* Feedback Banner */}
       {actionFeedback && (
         <div
-          className={`p-3.5 rounded-lg border text-xs font-mono flex items-center justify-between gap-3 shadow-sm ${
+          className={`p-4 rounded-lg border text-xs font-mono flex items-center justify-between gap-3 shadow-sm ${
             actionFeedback.isError
               ? 'bg-rose-950/40 border-rose-500/40 text-rose-300'
               : 'bg-emerald-950/40 border-emerald-500/40 text-emerald-300'
@@ -281,34 +328,34 @@ export const AdminChallengesPage: React.FC = () => {
             ) : (
               <CheckCircle2 className="w-4 h-4 shrink-0 text-emerald-400" />
             )}
-            <span>{actionFeedback.text}</span>
+            <span className="font-medium">{actionFeedback.text}</span>
           </div>
           <button
             type="button"
             onClick={() => setActionFeedback(null)}
-            className="text-zinc-400 hover:text-zinc-100 font-mono text-xs"
+            className="text-zinc-400 hover:text-zinc-200 text-xs"
           >
-            [Close]
+            Dismiss
           </button>
         </div>
       )}
 
       {/* SECTION 1: Target System Endpoint */}
-      <section className="rounded-lg border border-zinc-800 bg-zinc-900/40 p-5 space-y-4 shadow-sm">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-zinc-800/80 pb-3">
+      <section className="border border-zinc-800/80 bg-zinc-950/70 rounded-xl p-5 sm:p-6 space-y-4 shadow-sm">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-zinc-800 pb-3">
           <div>
             <h2 className="text-sm font-semibold text-zinc-100">Target Application Endpoint</h2>
             <p className="text-xs text-zinc-400">
               The live challenge target service hosted on Vercel. Admin has permanent access.
             </p>
           </div>
-          <span className="text-xs font-mono text-emerald-400 bg-emerald-950/50 border border-emerald-800/60 px-2 py-0.5 rounded-md self-start sm:self-auto font-medium">
+          <span className="text-xs font-mono text-emerald-400 bg-emerald-950/50 border border-emerald-500/30 px-2.5 py-0.5 rounded-full font-medium self-start sm:self-auto">
             Active Instance
           </span>
         </div>
 
-        <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 p-3.5 rounded-md bg-zinc-950 border border-zinc-800">
-          <div className="font-mono text-xs sm:text-sm text-emerald-300 select-all truncate">
+        <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 p-3.5 bg-zinc-900/60 border border-zinc-800 rounded-lg">
+          <div className="font-mono text-xs sm:text-sm text-emerald-400 select-all truncate font-medium">
             {targetUrl}
           </div>
 
@@ -316,7 +363,7 @@ export const AdminChallengesPage: React.FC = () => {
             <button
               type="button"
               onClick={handleCopyUrl}
-              className="px-3 py-1.5 text-xs font-mono font-medium rounded-md transition-colors bg-zinc-800 hover:bg-zinc-750 text-zinc-200 border border-zinc-700 flex items-center gap-1.5"
+              className="px-3 py-1.5 text-xs font-mono font-medium rounded-md transition-colors bg-zinc-800 hover:bg-zinc-700 text-zinc-200 border border-zinc-700 flex items-center gap-1.5"
             >
               {copiedUrl ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
               <span>{copiedUrl ? 'Copied' : 'Copy URL'}</span>
@@ -326,7 +373,7 @@ export const AdminChallengesPage: React.FC = () => {
               href={targetUrl}
               target="_blank"
               rel="noopener noreferrer"
-              className="px-3.5 py-1.5 text-xs font-mono font-semibold rounded-md transition-colors bg-emerald-600 hover:bg-emerald-500 text-white flex items-center gap-1.5 shadow-sm"
+              className="px-3.5 py-1.5 text-xs font-mono font-semibold rounded-md transition-colors bg-emerald-500 hover:bg-emerald-400 text-zinc-950 border border-emerald-400 flex items-center gap-1.5"
             >
               <span>Launch Target</span>
               <ExternalLink className="w-3.5 h-3.5" />
@@ -336,8 +383,8 @@ export const AdminChallengesPage: React.FC = () => {
       </section>
 
       {/* SECTION 2: Competition Launch & Lifecycle Gate */}
-      <section className="rounded-lg border border-zinc-800 bg-zinc-900/40 p-5 space-y-4 shadow-sm">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-zinc-800/80 pb-3">
+      <section className="border border-zinc-800/80 bg-zinc-950/70 rounded-xl p-5 sm:p-6 space-y-4 shadow-sm">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-zinc-800 pb-3">
           <div>
             <h2 className="text-sm font-semibold text-zinc-100">Competition Lifecycle Control</h2>
             <p className="text-xs text-zinc-400">
@@ -345,19 +392,19 @@ export const AdminChallengesPage: React.FC = () => {
             </p>
           </div>
           <span
-            className={`text-xs font-mono px-2 py-0.5 rounded-md font-semibold self-start sm:self-auto border ${
+            className={`text-xs font-mono px-2.5 py-0.5 rounded-full font-medium self-start sm:self-auto border ${
               isLive
-                ? 'bg-emerald-950/60 text-emerald-300 border-emerald-700/60'
+                ? 'bg-emerald-950/50 text-emerald-400 border-emerald-500/30'
                 : isPreparing
-                ? 'bg-amber-950/60 text-amber-300 border-amber-700/60'
-                : 'bg-zinc-800 text-zinc-300 border-zinc-700'
+                ? 'bg-amber-950/50 text-amber-300 border-amber-500/30'
+                : 'bg-zinc-900 text-zinc-300 border-zinc-700'
             }`}
           >
             {competition?.state || 'PREPARING'}
           </span>
         </div>
 
-        <div className="p-4 rounded-md bg-zinc-950/60 border border-zinc-800/80">
+        <div className="p-4 bg-zinc-900/60 border border-zinc-800 rounded-lg">
           {isPreparing ? (
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
               <div className="space-y-1">
@@ -371,19 +418,18 @@ export const AdminChallengesPage: React.FC = () => {
 
               <button
                 type="button"
-                onClick={handleForceStart}
-                disabled={startingCompetition}
-                className="px-4 py-2 text-xs font-mono font-semibold rounded-md bg-emerald-600 hover:bg-emerald-500 active:bg-emerald-700 text-white shadow-sm transition-colors flex items-center justify-center gap-2 shrink-0 disabled:opacity-50"
+                onClick={openStartModal}
+                className="px-4 py-2 text-xs font-mono font-semibold uppercase bg-emerald-500 hover:bg-emerald-400 text-zinc-950 rounded-lg transition-colors flex items-center justify-center gap-2 shrink-0 shadow-sm"
               >
-                <Zap className="w-3.5 h-3.5 fill-current" />
-                <span>{startingCompetition ? 'Starting Round...' : 'Start Competition'}</span>
+                <Zap className="w-3.5 h-3.5 fill-zinc-950" />
+                <span>Start Competition</span>
               </button>
             </div>
           ) : (
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
               <div className="space-y-1">
                 <div className="text-xs font-semibold text-emerald-400 flex items-center gap-2">
-                  <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse motion-reduce:animate-none" />
+                  <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
                   <span>Competition is Live</span>
                 </div>
                 <p className="text-xs text-zinc-400">
@@ -391,22 +437,20 @@ export const AdminChallengesPage: React.FC = () => {
                 </p>
               </div>
 
-              <div className="flex items-center gap-2 shrink-0">
+              <div className="flex items-center gap-2.5 shrink-0 flex-wrap">
                 <button
                   type="button"
-                  onClick={handleTogglePause}
-                  disabled={pausingCompetition}
-                  className="px-3 py-1.5 text-xs font-mono font-medium rounded-md bg-zinc-800 hover:bg-zinc-750 text-amber-300 border border-amber-500/40 flex items-center gap-1.5 shadow-sm disabled:opacity-50 transition-colors"
+                  onClick={openPauseModal}
+                  className="px-3.5 py-1.5 text-xs font-mono font-medium rounded-lg bg-zinc-800 hover:bg-zinc-750 text-amber-300 border border-amber-500/40 flex items-center gap-1.5 transition-colors"
                 >
-                  <Pause className="w-3.5 h-3.5" />
+                  {competition?.isPaused ? <Play className="w-3.5 h-3.5 fill-amber-300" /> : <Pause className="w-3.5 h-3.5" />}
                   <span>{competition?.isPaused ? 'Resume Round' : 'Pause Round'}</span>
                 </button>
 
                 <button
                   type="button"
-                  onClick={handleResetToPreparing}
-                  disabled={resettingCompetition}
-                  className="px-3 py-1.5 text-xs font-mono font-medium rounded-md bg-zinc-900 hover:bg-zinc-850 text-rose-300 border border-rose-500/40 flex items-center gap-1.5 shadow-sm disabled:opacity-50 transition-colors"
+                  onClick={openResetModal}
+                  className="px-3.5 py-1.5 text-xs font-mono font-medium rounded-lg bg-rose-950/60 hover:bg-rose-900/60 text-rose-300 border border-rose-500/40 flex items-center gap-1.5 transition-colors"
                 >
                   <RotateCcw className="w-3.5 h-3.5" />
                   <span>Reset to Preparing</span>
@@ -418,83 +462,89 @@ export const AdminChallengesPage: React.FC = () => {
       </section>
 
       {/* SECTION 3: Participating Squads & Voucher Mappings */}
-      <section className="rounded-lg border border-zinc-800 bg-zinc-900/40 p-5 space-y-4 shadow-sm">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-zinc-800/80 pb-3">
+      <section className="border border-zinc-800/80 bg-zinc-950/70 rounded-xl p-5 sm:p-6 space-y-4 shadow-sm">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-zinc-800 pb-3">
           <div>
             <h2 className="text-sm font-semibold text-zinc-100">Squad Roster & Voucher Keys</h2>
             <p className="text-xs text-zinc-400">
               Manage team custom Loventia voucher IDs and monitor real-time attempt progress.
             </p>
           </div>
-          <span className="text-xs font-mono text-zinc-400">
-            Total Squads: <strong className="text-zinc-200">{teams.length}</strong>
+          <span className="text-xs font-mono text-zinc-400 font-medium">
+            Total Squads: {teams.length}
           </span>
         </div>
 
-        <div className="overflow-x-auto rounded-md border border-zinc-800">
+        <div className="overflow-x-auto rounded-lg border border-zinc-800">
           <table className="w-full text-left font-mono text-xs">
-            <thead className="bg-zinc-900/80 border-b border-zinc-800 text-zinc-400 text-[11px] uppercase">
+            <thead className="bg-zinc-900/80 border-b border-zinc-800 text-zinc-400 uppercase text-[11px] font-medium">
               <tr>
-                <th className="py-2.5 px-3.5">Squad Name</th>
-                <th className="py-2.5 px-3.5">Members</th>
-                <th className="py-2.5 px-3.5">Loventia Voucher Key</th>
-                <th className="py-2.5 px-3.5">Readiness</th>
-                <th className="py-2.5 px-3.5 text-right">Status</th>
+                <th className="py-3 px-3.5">Squad Name</th>
+                <th className="py-3 px-3.5">Members</th>
+                <th className="py-3 px-3.5">Loventia Voucher Key</th>
+                <th className="py-3 px-3.5">Readiness</th>
+                <th className="py-3 px-3.5 text-right">Status</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-zinc-800/60 bg-zinc-950/60">
+            <tbody className="divide-y divide-zinc-800/60 bg-zinc-950/50">
               {teams.length === 0 ? (
                 <tr>
-                  <td colSpan={5} className="py-6 text-center text-zinc-500">
-                    No teams registered in system.
+                  <td colSpan={5} className="py-6 px-3.5 text-center text-zinc-500 font-mono">
+                    No teams registered yet.
                   </td>
                 </tr>
               ) : (
                 teams.map((t) => {
                   const isEditing = editingTeamId === t.id;
-                  const isReady = t.isReady;
+                  const readyEntry = readiness?.teams?.find((rt) => rt.teamId === t.id);
+                  const isReady = Boolean(t.isReady || readyEntry?.isReady);
 
                   return (
                     <tr key={t.id} className="hover:bg-zinc-900/40 transition-colors">
-                      <td className="py-2.5 px-3.5 font-semibold text-zinc-100">
+                      <td className="py-3 px-3.5 font-semibold text-zinc-100">
                         {t.name}
                       </td>
-                      <td className="py-2.5 px-3.5 text-zinc-400">
-                        {t.membersCount ?? 0} members
+                      <td className="py-3 px-3.5 text-zinc-400">
+                        {t.membersCount ?? t.members?.length ?? 0} members
                       </td>
-                      <td className="py-2.5 px-3.5">
+                      <td className="py-3 px-3.5">
                         {isEditing ? (
-                          <div className="flex items-center gap-1.5">
+                          <div className="flex items-center gap-1.5 max-w-xs">
                             <input
                               type="text"
                               value={editValenfindId}
                               onChange={(e) => setEditValenfindId(e.target.value)}
-                              placeholder="e.g. byte_bandits_vip"
-                              className="px-2 py-1 bg-zinc-900 border border-emerald-500 text-xs text-zinc-100 font-mono w-44 rounded focus:outline-none"
+                              placeholder="e.g. team-voucher-id"
+                              className="px-2.5 py-1 bg-zinc-900 border border-zinc-700 rounded text-xs font-mono text-zinc-100 placeholder-zinc-600 focus:outline-none focus:border-emerald-500 flex-1"
                               autoFocus
                             />
                             <button
                               type="button"
                               onClick={() => handleSaveTeamMapping(t.id)}
                               disabled={savingTeamId === t.id}
-                              className="p-1 rounded bg-emerald-600 hover:bg-emerald-500 text-white"
-                              title="Save"
+                              className="px-2.5 py-1 bg-emerald-500 hover:bg-emerald-400 text-zinc-950 rounded font-semibold text-[11px]"
                             >
-                              <Check className="w-3.5 h-3.5" />
+                              {savingTeamId === t.id ? '...' : 'Save'}
                             </button>
                             <button
                               type="button"
-                              onClick={() => setEditingTeamId(null)}
-                              className="p-1 rounded bg-zinc-800 hover:bg-zinc-700 text-zinc-400"
-                              title="Cancel"
+                              onClick={() => {
+                                setEditingTeamId(null);
+                                setEditValenfindId('');
+                              }}
+                              className="px-2.5 py-1 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 rounded text-[11px]"
                             >
-                              <X className="w-3.5 h-3.5" />
+                              Cancel
                             </button>
                           </div>
                         ) : (
-                          <div className="flex items-center gap-2 group">
-                            <span className="font-mono text-emerald-400 text-xs">
-                              {t.valenfindTeamId || <span className="text-zinc-600 italic">auto-generated</span>}
+                          <div className="flex items-center gap-2">
+                            <span
+                              className={`font-mono text-xs ${
+                                t.valenfindTeamId ? 'text-zinc-200' : 'text-zinc-600 italic'
+                              }`}
+                            >
+                              {t.valenfindTeamId || '[Unset]'}
                             </span>
                             <button
                               type="button"
@@ -502,43 +552,43 @@ export const AdminChallengesPage: React.FC = () => {
                                 setEditingTeamId(t.id);
                                 setEditValenfindId(t.valenfindTeamId || '');
                               }}
-                              className="opacity-0 group-hover:opacity-100 text-zinc-500 hover:text-zinc-300 transition-opacity"
-                              title="Edit Loventia voucher key"
+                              className="p-1 hover:text-emerald-400 text-zinc-500 transition-colors"
+                              title="Edit Loventia voucher mapping"
                             >
-                              <Edit2 className="w-3 h-3" />
+                              <Edit2 className="w-3.5 h-3.5" />
                             </button>
                           </div>
                         )}
                       </td>
-                      <td className="py-2.5 px-3.5">
+                      <td className="py-3 px-3.5">
                         <span
-                          className={`inline-block px-2 py-0.5 text-[10px] rounded font-semibold uppercase border ${
+                          className={`text-[11px] font-mono px-2 py-0.5 rounded-full font-medium ${
                             isReady
-                              ? 'bg-emerald-950/60 text-emerald-300 border-emerald-800/60'
-                              : 'bg-zinc-900 text-zinc-400 border-zinc-800'
+                              ? 'bg-emerald-950/60 text-emerald-400 border border-emerald-500/30'
+                              : 'bg-zinc-900 text-zinc-500 border border-zinc-800'
                           }`}
                         >
-                          {isReady ? 'READY' : 'PREPARING'}
+                          {isReady ? 'Ready' : 'Preparing'}
                         </span>
                       </td>
-                      <td className="py-2.5 px-3.5 text-right">
+                      <td className="py-3 px-3.5 text-right">
                         {!isCompStarted ? (
-                          <span className="text-zinc-500 font-mono text-[11px] uppercase tracking-wider">
-                            STAGING
+                          <span className="text-zinc-500 font-mono text-[11px]">
+                            Preparation
                           </span>
                         ) : t.isSolved || t.attemptStatus === 'COMPLETED' ? (
                           <span className="inline-flex items-center gap-1 text-emerald-400 font-semibold text-xs">
                             <CheckCircle2 className="w-3.5 h-3.5" />
-                            <span>SOLVED</span>
+                            <span>Solved</span>
                           </span>
                         ) : t.attemptStatus === 'IN_PROGRESS' ? (
                           <span className="inline-flex items-center gap-1 text-amber-400 font-semibold text-xs">
                             <Clock className="w-3.5 h-3.5" />
-                            <span>ATTEMPTING</span>
+                            <span>Attempting</span>
                           </span>
                         ) : (
-                          <span className="text-zinc-500 font-mono text-[11px] uppercase tracking-wider">
-                            PENDING
+                          <span className="text-zinc-500 font-mono text-[11px]">
+                            Pending
                           </span>
                         )}
                       </td>
@@ -550,6 +600,92 @@ export const AdminChallengesPage: React.FC = () => {
           </table>
         </div>
       </section>
+
+      {/* Professional Confirmation Modal */}
+      {confirmModal && confirmModal.isOpen && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-150"
+        >
+          <div className="bg-zinc-950 border border-zinc-800 rounded-xl shadow-2xl max-w-lg w-full p-6 space-y-5 text-left font-mono relative">
+            {/* Modal Top Bar */}
+            <div className="flex items-center justify-between border-b border-zinc-800 pb-3">
+              <span
+                className={`text-xs font-semibold px-2.5 py-0.5 rounded-md ${
+                  confirmModal.theme === 'emerald'
+                    ? 'bg-emerald-950/60 text-emerald-400 border border-emerald-500/30'
+                    : confirmModal.theme === 'amber'
+                    ? 'bg-amber-950/60 text-amber-400 border border-amber-500/30'
+                    : 'bg-rose-950/60 text-rose-400 border border-rose-500/30'
+                }`}
+              >
+                {confirmModal.badge}
+              </span>
+              <button
+                type="button"
+                onClick={() => setConfirmModal(null)}
+                className="p-1 text-zinc-400 hover:text-zinc-100 rounded-md hover:bg-zinc-900 transition-colors"
+                aria-label="Close modal"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* Modal Body */}
+            <div className="space-y-3">
+              <h3 className="text-base sm:text-lg font-bold text-zinc-100 flex items-center gap-2">
+                {confirmModal.theme === 'emerald' ? (
+                  <Zap className="w-5 h-5 text-emerald-400 shrink-0" />
+                ) : confirmModal.theme === 'amber' ? (
+                  <Pause className="w-5 h-5 text-amber-400 shrink-0" />
+                ) : (
+                  <AlertTriangle className="w-5 h-5 text-rose-400 shrink-0" />
+                )}
+                <span>{confirmModal.title}</span>
+              </h3>
+              <p className="text-xs text-zinc-300 leading-relaxed bg-zinc-900/60 p-3.5 rounded-lg border border-zinc-800">
+                {confirmModal.description}
+              </p>
+            </div>
+
+            {/* Modal Action Buttons */}
+            <div className="flex items-center justify-end gap-3 pt-2">
+              <button
+                type="button"
+                disabled={modalLoading}
+                onClick={() => setConfirmModal(null)}
+                className="px-4 py-2 bg-zinc-900 hover:bg-zinc-800 text-zinc-300 rounded-lg text-xs font-medium border border-zinc-700/80 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={modalLoading}
+                onClick={async () => {
+                  setModalLoading(true);
+                  try {
+                    await confirmModal.onConfirm();
+                    setConfirmModal(null);
+                  } finally {
+                    setModalLoading(false);
+                  }
+                }}
+                className={`px-4 py-2 rounded-lg text-xs font-semibold transition-colors flex items-center gap-2 ${
+                  confirmModal.theme === 'emerald'
+                    ? 'bg-emerald-500 hover:bg-emerald-400 text-zinc-950'
+                    : confirmModal.theme === 'amber'
+                    ? 'bg-amber-500 hover:bg-amber-400 text-zinc-950'
+                    : 'bg-rose-600 hover:bg-rose-500 text-white'
+                }`}
+              >
+                {modalLoading && <RefreshCw className="w-3.5 h-3.5 animate-spin" />}
+                <span>{confirmModal.confirmLabel}</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
