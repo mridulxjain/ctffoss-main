@@ -1,7 +1,7 @@
 import React from 'react';
 import { ExternalLink } from 'lucide-react';
 import { Ascii } from 'ascii.rest/react';
-import { cloudSea } from 'ascii.rest/pieces';
+import { cloudSeaPiece } from '../../lib/cloudSea';
 
 export const Footer: React.FC = () => {
   return (
@@ -10,7 +10,7 @@ export const Footer: React.FC = () => {
       <div className="relative w-full h-44 sm:h-52 overflow-hidden flex items-center justify-center">
         <div className="absolute inset-0 w-full h-full flex items-center justify-center opacity-85 pointer-events-none">
           <Ascii
-            piece={cloudSea}
+            piece={cloudSeaPiece}
             className="w-full h-full block object-cover"
             style={{ width: '100%', height: '100%' }}
           />

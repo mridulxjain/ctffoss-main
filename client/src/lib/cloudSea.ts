@@ -9,7 +9,7 @@
  * The cloud sea is a stack of billow rows laid out in depth, each a wrapping
  * height profile, so every column is resolved front to back in one pass.
  */
-import type { Frame, Meta } from "../types.ts";
+import type { Frame, Meta, Piece } from "ascii.rest";
 
 export const meta = {
   name: "cloud sea",
@@ -332,3 +332,9 @@ export default function cloudSea(): Frame {
     return lines.join("\n");
   };
 }
+
+export const cloudSeaPiece: Piece = {
+  meta,
+  default: cloudSea,
+};
+
