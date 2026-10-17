@@ -563,12 +563,12 @@ export const dbService = {
       for (const p of DEV_PARTICIPANTS) {
         await prisma.user.upsert({
           where: { id: p.id },
-          update: { email: p.email, username: p.username, teamId: p.teamId, role: p.role },
+          update: { email: p.email, username: p.username, teamId: p.teamId, role: p.role?.toLowerCase() === 'admin' ? 'admin' : 'member' },
           create: {
             id: p.id,
             email: p.email,
             username: p.username,
-            role: p.role,
+            role: p.role?.toLowerCase() === 'admin' ? 'admin' : 'member',
             teamId: p.teamId,
           },
         });
@@ -577,12 +577,12 @@ export const dbService = {
       // Also ensure Admin exists
       await prisma.user.upsert({
         where: { id: DEV_ADMIN.id },
-        update: { role: 'ADMIN' },
+        update: { role: 'admin' },
         create: {
           id: DEV_ADMIN.id,
           email: DEV_ADMIN.email,
           username: DEV_ADMIN.username,
-          role: 'ADMIN',
+          role: 'admin',
           teamId: null,
         },
       });
@@ -643,6 +643,7 @@ export const dbService = {
         email: u.email,
         username: u.username,
         role: u.role as Role,
+        clubRole: u.role,
         teamId: u.teamId,
         oidcSub: u.oidcSub,
         avatarUrl: u.avatarUrl,
@@ -661,21 +662,22 @@ export const dbService = {
   async updateUser(
     userId: string,
     data: {
-      role?: Role;
+      role?: Role | string;
+      clubRole?: string | null;
       teamId?: string | null;
       avatarUrl?: string | null;
       oidcSub?: string | null;
       username?: string;
       email?: string;
-      clubRole?: string | null;
     }
   ): Promise<DBUser> {
+    const desiredRole = data.role ?? data.clubRole;
     const hasDb = await checkPrisma();
     if (hasDb) {
       const u = await prisma.user.update({
         where: { id: userId },
         data: {
-          ...(data.role ? { role: data.role } : {}),
+          ...(desiredRole ? { role: desiredRole } : {}),
           ...(data.teamId !== undefined ? { teamId: data.teamId } : {}),
           ...(data.avatarUrl !== undefined ? { avatarUrl: data.avatarUrl } : {}),
           ...(data.oidcSub !== undefined ? { oidcSub: data.oidcSub } : {}),
@@ -688,7 +690,7 @@ export const dbService = {
         email: u.email,
         username: u.username,
         role: u.role as Role,
-        clubRole: data.clubRole,
+        clubRole: u.role,
         teamId: u.teamId,
         oidcSub: u.oidcSub,
         avatarUrl: u.avatarUrl,
@@ -700,20 +702,21 @@ export const dbService = {
     if (!user) {
       throw new Error('User not found');
     }
-    if (data.role) user.role = data.role;
+    if (desiredRole) {
+      user.role = desiredRole as Role;
+      user.clubRole = desiredRole;
+    }
     if (data.teamId !== undefined) user.teamId = data.teamId;
     if (data.avatarUrl !== undefined) user.avatarUrl = data.avatarUrl;
     if (data.oidcSub !== undefined) user.oidcSub = data.oidcSub;
     if (data.username) user.username = data.username;
     if (data.email) user.email = data.email;
-    if (data.clubRole !== undefined) user.clubRole = data.clubRole;
     return user;
   },
 
   async getUser(id: string): Promise<DBUser | null> {
     const hasDb = await checkPrisma();
     if (hasDb) {
-
       const u = await prisma.user.findUnique({ where: { id } });
       if (!u) return null;
       return {
@@ -721,6 +724,7 @@ export const dbService = {
         email: u.email,
         username: u.username,
         role: u.role as Role,
+        clubRole: u.role,
         teamId: u.teamId,
         oidcSub: u.oidcSub,
         avatarUrl: u.avatarUrl,
@@ -740,6 +744,7 @@ export const dbService = {
         email: u.email,
         username: u.username,
         role: u.role as Role,
+        clubRole: u.role,
         teamId: u.teamId,
         oidcSub: u.oidcSub,
         avatarUrl: u.avatarUrl,
@@ -762,6 +767,7 @@ export const dbService = {
         email: u.email,
         username: u.username,
         role: u.role as Role,
+        clubRole: u.role,
         teamId: u.teamId,
         oidcSub: u.oidcSub,
         avatarUrl: u.avatarUrl,
@@ -784,6 +790,7 @@ export const dbService = {
         email: u.email,
         username: u.username,
         role: u.role as Role,
+        clubRole: u.role,
         teamId: u.teamId,
         oidcSub: u.oidcSub,
         avatarUrl: u.avatarUrl,
@@ -799,18 +806,20 @@ export const dbService = {
   async createUser(data: {
     email: string;
     username: string;
-    role: Role;
+    role?: Role | string;
+    clubRole?: string | null;
     teamId?: string | null;
     oidcSub?: string | null;
     avatarUrl?: string | null;
   }): Promise<DBUser> {
+    const finalRole = data.role ?? data.clubRole ?? 'member';
     const hasDb = await checkPrisma();
     if (hasDb) {
       const u = await prisma.user.create({
         data: {
           email: data.email,
           username: data.username,
-          role: data.role,
+          role: finalRole,
           teamId: data.teamId || null,
           oidcSub: data.oidcSub || null,
           avatarUrl: data.avatarUrl || null,
@@ -821,6 +830,7 @@ export const dbService = {
         email: u.email,
         username: u.username,
         role: u.role as Role,
+        clubRole: u.role,
         teamId: u.teamId,
         oidcSub: u.oidcSub,
         avatarUrl: u.avatarUrl,
@@ -832,7 +842,8 @@ export const dbService = {
       id: `usr-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
       email: data.email,
       username: data.username,
-      role: data.role,
+      role: finalRole as Role,
+      clubRole: finalRole,
       teamId: data.teamId || null,
       oidcSub: data.oidcSub || null,
       avatarUrl: data.avatarUrl || null,
@@ -998,7 +1009,7 @@ export const dbService = {
   async listChallenges(teamId?: string | null, userRole?: string | null): Promise<any[]> {
     const hasDb = await checkPrisma();
     const compConfig = await this.getCompetitionConfig();
-    const isPrivilegedAdmin = userRole === 'ADMIN';
+    const isPrivilegedAdmin = userRole?.toLowerCase() === 'admin';
     const canAccessTarget = isPrivilegedAdmin || compConfig.status === 'LIVE';
     const compAttempt = teamId ? await this.getCompetitionAttempt(teamId) : null;
 
@@ -1137,7 +1148,7 @@ export const dbService = {
   ): Promise<any | null> {
     const hasDb = await checkPrisma();
     const compConfig = await this.getCompetitionConfig();
-    const isPrivilegedAdmin = userRole === 'ADMIN';
+    const isPrivilegedAdmin = userRole?.toLowerCase() === 'admin';
     const canAccessTarget = isPrivilegedAdmin || compConfig.status === 'LIVE';
 
     if (hasDb) {

@@ -17,11 +17,11 @@ export const RoleBadge: React.FC<RoleBadgeProps> = ({
 }) => {
   const [isHovered, setIsHovered] = useState(false);
 
-  const normalizedRole = user.role?.toUpperCase();
-  const rawClubRole = user.clubRole ? String(user.clubRole).toLowerCase().trim() : null;
+  const normalizedRole = user.role?.toLowerCase()?.trim();
+  const rawClubRole = (user.clubRole || user.role) ? String(user.clubRole || user.role).toLowerCase().trim() : null;
 
   const isAdmin =
-    normalizedRole === 'ADMIN' ||
+    normalizedRole === 'admin' ||
     rawClubRole === 'admin' ||
     user.username?.toLowerCase() === 'mridulxjain';
 

@@ -50,6 +50,11 @@ function makeRequest(
 }
 
 test.before(() => {
+  dbService.setStorageDriver('memory');
+  oidcService.setMockHandler(async () => ({
+    sub: 'default-mock-sub',
+    email: 'mock@fossclub.tech',
+  }));
   return new Promise((resolve) => {
     server = app.listen(0, () => {
       const addr = server.address();
@@ -63,6 +68,7 @@ test.before(() => {
 
 test.after(() => {
   oidcService.clearMockHandler();
+  dbService.setStorageDriver(null);
   return new Promise((resolve) => {
     server.close(() => resolve());
   });
@@ -193,7 +199,7 @@ test('PHASE 7: OIDC Authentication, PKCE flow, claim validation, and account pro
     assert.equal(callbackRes.body.success, true);
     assert.ok(callbackRes.body.data.user);
     assert.equal(callbackRes.body.data.user.email, testOidcEmail);
-    assert.equal(callbackRes.body.data.user.role, 'USER'); // Safe default
+    assert.equal(callbackRes.body.data.user.role, 'member'); // Safe default
     assert.equal(callbackRes.body.data.user.teamId, null); // Safe default
 
     // Verify User record in DB
@@ -201,7 +207,7 @@ test('PHASE 7: OIDC Authentication, PKCE flow, claim validation, and account pro
     assert.ok(dbUser);
     assert.equal(dbUser.oidcSub, testOidcSub);
     assert.equal(dbUser.email, testOidcEmail);
-    assert.equal(dbUser.role, 'USER');
+    assert.equal(dbUser.role, 'member');
     assert.equal(dbUser.teamId, null);
 
     // Verify session cookie was issued
@@ -221,7 +227,7 @@ test('PHASE 7: OIDC Authentication, PKCE flow, claim validation, and account pro
     assert.equal(meRes.body.success, true);
     assert.ok(meRes.body.data.user);
     assert.equal(meRes.body.data.user.email, testOidcEmail);
-    assert.equal(meRes.body.data.user.role, 'USER');
+    assert.equal(meRes.body.data.user.role, 'member');
   });
 
   await t.test('Repeat OIDC login: re-uses existing account without creating duplicate users', async () => {
@@ -405,6 +411,137 @@ test('PHASE 7: OIDC Authentication, PKCE flow, claim validation, and account pro
       (config as any).nodeEnv = origEnv;
       (config as any).isDev = origIsDev;
     }
+  });
+
+  await t.test('ClubRole storage: lead and core roles from OIDC are stored in database and session', async () => {
+    // 1. Test Lead role provisioning
+    const loginRes = await makeRequest('GET', '/api/v1/auth/login', { Accept: 'application/json' });
+    const authUrl = new URL(loginRes.body.data.authorizationUrl);
+    const validState = authUrl.searchParams.get('state')!;
+    const txCookie = loginRes.headers['set-cookie']!.find((c) => c.startsWith('oidc_tx='))!.split(';')[0];
+
+    const leadSub = 'usr-oidc-sub-lead-123';
+    oidcService.setMockHandler(async () => {
+      return {
+        sub: leadSub,
+        email: 'lead_user@fossclub.tech',
+        preferred_username: 'club_lead_01',
+        role: 'lead',
+        member: true,
+      };
+    });
+
+    const callbackRes = await makeRequest(
+      'GET',
+      `/api/v1/auth/callback?code=lead-code&state=${validState}`,
+      { Accept: 'application/json', Cookie: txCookie }
+    );
+
+    assert.equal(callbackRes.status, 200);
+    assert.equal(callbackRes.body.data.user.role, 'lead');
+    assert.equal(callbackRes.body.data.user.clubRole, 'lead');
+
+    // Verify persisted in DB
+    const dbLead = await dbService.getUserByOidcSub(leadSub);
+    assert.ok(dbLead);
+    assert.equal(dbLead.role, 'lead');
+    assert.equal(dbLead.clubRole, 'lead');
+
+    // 2. Test Core role provisioning
+    const loginRes2 = await makeRequest('GET', '/api/v1/auth/login', { Accept: 'application/json' });
+    const authUrl2 = new URL(loginRes2.body.data.authorizationUrl);
+    const validState2 = authUrl2.searchParams.get('state')!;
+    const txCookie2 = loginRes2.headers['set-cookie']!.find((c) => c.startsWith('oidc_tx='))!.split(';')[0];
+
+    const coreSub = 'usr-oidc-sub-core-456';
+    oidcService.setMockHandler(async () => {
+      return {
+        sub: coreSub,
+        email: 'core_user@fossclub.tech',
+        preferred_username: 'club_core_01',
+        roles: ['core', 'member'],
+        member: true,
+      };
+    });
+
+    const callbackRes2 = await makeRequest(
+      'GET',
+      `/api/v1/auth/callback?code=core-code&state=${validState2}`,
+      { Accept: 'application/json', Cookie: txCookie2 }
+    );
+
+    assert.equal(callbackRes2.status, 200);
+    assert.equal(callbackRes2.body.data.user.role, 'core');
+    assert.equal(callbackRes2.body.data.user.clubRole, 'core');
+
+    const dbCore = await dbService.getUserByOidcSub(coreSub);
+    assert.ok(dbCore);
+    assert.equal(dbCore.role, 'core');
+    assert.equal(dbCore.clubRole, 'core');
+  });
+
+  await t.test('Bidirectional role sync: demotes admin to member and promotes member to admin in DB on login', async () => {
+    // 1. Create initial Admin user via OIDC
+    const loginRes = await makeRequest('GET', '/api/v1/auth/login', { Accept: 'application/json' });
+    const authUrl = new URL(loginRes.body.data.authorizationUrl);
+    const validState = authUrl.searchParams.get('state')!;
+    const txCookie = loginRes.headers['set-cookie']!.find((c) => c.startsWith('oidc_tx='))!.split(';')[0];
+
+    const syncSub = 'usr-oidc-sub-sync-789';
+    oidcService.setMockHandler(async () => {
+      return {
+        sub: syncSub,
+        email: 'sync_user@fossclub.tech',
+        preferred_username: 'sync_user',
+        role: 'admin',
+      };
+    });
+
+    const callbackRes1 = await makeRequest(
+      'GET',
+      `/api/v1/auth/callback?code=sync-code-1&state=${validState}`,
+      { Accept: 'application/json', Cookie: txCookie }
+    );
+
+    assert.equal(callbackRes1.status, 200);
+    assert.equal(callbackRes1.body.data.user.role, 'admin');
+    assert.equal(callbackRes1.body.data.user.clubRole, 'admin');
+
+    let dbSyncUser = await dbService.getUserByOidcSub(syncSub);
+    assert.ok(dbSyncUser);
+    assert.equal(dbSyncUser.role, 'admin');
+    assert.equal(dbSyncUser.clubRole, 'admin');
+
+    // 2. User gets demoted to regular 'member' in OIDC provider
+    const loginRes2 = await makeRequest('GET', '/api/v1/auth/login', { Accept: 'application/json' });
+    const authUrl2 = new URL(loginRes2.body.data.authorizationUrl);
+    const validState2 = authUrl2.searchParams.get('state')!;
+    const txCookie2 = loginRes2.headers['set-cookie']!.find((c) => c.startsWith('oidc_tx='))!.split(';')[0];
+
+    oidcService.setMockHandler(async () => {
+      return {
+        sub: syncSub,
+        email: 'sync_user@fossclub.tech',
+        preferred_username: 'sync_user',
+        role: 'member',
+      };
+    });
+
+    const callbackRes2 = await makeRequest(
+      'GET',
+      `/api/v1/auth/callback?code=sync-code-2&state=${validState2}`,
+      { Accept: 'application/json', Cookie: txCookie2 }
+    );
+
+    assert.equal(callbackRes2.status, 200);
+    assert.equal(callbackRes2.body.data.user.role, 'member');
+    assert.equal(callbackRes2.body.data.user.clubRole, 'member');
+
+    // Verify DB was authoritatively updated (demoted)
+    dbSyncUser = await dbService.getUserByOidcSub(syncSub);
+    assert.ok(dbSyncUser);
+    assert.equal(dbSyncUser.role, 'member');
+    assert.equal(dbSyncUser.clubRole, 'member');
   });
 
   await t.test('Production safety: dev-login is strictly rejected when isDev is false (403 DEV_AUTH_DISABLED)', async () => {

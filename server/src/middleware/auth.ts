@@ -54,9 +54,7 @@ export async function authenticate(req: Request, res: Response, next: NextFuncti
         if (liveUser) {
           req.user.teamId = liveUser.teamId;
           req.user.role = liveUser.role;
-          if (liveUser.role === 'ADMIN') {
-            req.user.clubRole = 'admin';
-          }
+          req.user.clubRole = liveUser.role;
         }
       } catch {
         // Retain verified JWT payload if database lookup encounters transient error
@@ -67,7 +65,7 @@ export async function authenticate(req: Request, res: Response, next: NextFuncti
         req.user.username?.toLowerCase() === 'mridulxjain' ||
         req.user.email?.toLowerCase() === 'krishnajain2604@gmail.com'
       ) {
-        req.user.role = 'ADMIN';
+        req.user.role = 'admin';
         req.user.clubRole = 'admin';
       }
     }
@@ -112,7 +110,14 @@ export function requireTeam(req: Request, res: Response, next: NextFunction): vo
 }
 
 export function requireAdmin(req: Request, res: Response, next: NextFunction): void {
-  if (!req.user || req.user.role !== 'ADMIN') {
+  const role = req.user?.role?.toLowerCase();
+  const isAdmin =
+    role === 'admin' ||
+    req.user?.username?.toLowerCase() === 'mridulxjain' ||
+    req.user?.email?.toLowerCase() === 'krishnajain2604@gmail.com' ||
+    req.user?.email?.toLowerCase() === 'admin@fossclub.tech';
+
+  if (!req.user || !isAdmin) {
     res.status(403).json({
       success: false,
       error: { message: 'Administrator privileges required', code: 'FORBIDDEN' },

@@ -16,7 +16,9 @@ export interface OidcVerifiedClaims {
   name?: string;
   picture?: string;
   member?: boolean;
-  role?: string | null;
+  role?: string | string[] | null;
+  roles?: string | string[] | null;
+  groups?: string | string[] | null;
 }
 
 export type OidcMockHandler = (params: {
@@ -182,14 +184,27 @@ export const oidcService = {
         throw err;
       }
 
+      let userinfoClaims: any = {};
+      if (tokens.access_token && providerConfig.userinfo_endpoint) {
+        try {
+          userinfoClaims = await oidc.fetchUserInfo(providerConfig, tokens.access_token, claims.sub);
+        } catch {
+          // Fallback cleanly to ID token claims if userinfo is not available
+        }
+      }
+
+      const merged = { ...claims, ...userinfoClaims };
+
       return {
-        sub: claims.sub,
-        email: claims.email as string | undefined,
-        preferred_username: claims.preferred_username as string | undefined,
-        name: claims.name as string | undefined,
-        picture: claims.picture as string | undefined,
-        member: claims.member as boolean | undefined,
-        role: claims.role as string | null | undefined,
+        sub: merged.sub,
+        email: merged.email as string | undefined,
+        preferred_username: merged.preferred_username as string | undefined,
+        name: merged.name as string | undefined,
+        picture: merged.picture as string | undefined,
+        member: merged.member as boolean | undefined,
+        role: (merged.role ?? merged.roles ?? merged.groups) as string | string[] | null | undefined,
+        roles: merged.roles as string | string[] | null | undefined,
+        groups: merged.groups as string | string[] | null | undefined,
       };
     } catch (err: any) {
       if (err.code) throw err;

@@ -1,11 +1,11 @@
-export type Role = 'USER' | 'ADMIN';
+export type Role = 'admin' | 'lead' | 'core' | 'member' | 'ADMIN' | 'USER';
 export type ClubRole = 'admin' | 'lead' | 'core' | 'member';
 
 export interface UserDTO {
   id: string;
   email: string;
   username: string;
-  role: Role;
+  role: Role | string;
   clubRole?: ClubRole | string | null;
   teamId: string | null;
   teamName?: string | null;

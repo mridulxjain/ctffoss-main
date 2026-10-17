@@ -20,8 +20,8 @@ function getOidcTxCookieName(): string {
 
 function getSessionCookieOptions(maxAge?: number) {
   const isProd = isProductionEnv();
-  const isSecure = isProd || config.cookieSameSite === 'none';
-  const sameSite = config.cookieSameSite === 'none' || isProd ? 'none' : 'lax';
+  const sameSite = config.cookieSameSite === 'none' ? 'none' : 'lax';
+  const isSecure = isProd || sameSite === 'none';
   return {
     httpOnly: true,
     secure: isSecure,
@@ -41,6 +41,28 @@ function getOidcTxCookieOptions(maxAge: number = 15 * 60 * 1000) {
     path: '/',
     maxAge,
   };
+}
+
+function parseOidcRoles(claims: { role?: any; roles?: any; groups?: any }): string[] {
+  const extracted: string[] = [];
+
+  const add = (val: any) => {
+    if (!val) return;
+    if (Array.isArray(val)) {
+      val.forEach(add);
+    } else if (typeof val === 'string') {
+      val.split(',').forEach((s) => {
+        const trimmed = s.trim().toLowerCase();
+        if (trimmed) extracted.push(trimmed);
+      });
+    }
+  };
+
+  add(claims.role);
+  add(claims.roles);
+  add(claims.groups);
+
+  return extracted;
 }
 
 export const authController = {
@@ -175,20 +197,22 @@ export const authController = {
       }
 
       // Extract role and attributes from OIDC claims
-      const rawRole = claims.role ? String(claims.role).toLowerCase().trim() : null;
+      const rawRoles = parseOidcRoles(claims);
       const isOidcAdmin =
-        rawRole === 'admin' ||
+        rawRoles.includes('admin') ||
         claims.preferred_username?.toLowerCase() === 'mridulxjain' ||
         claims.email?.toLowerCase() === 'krishnajain2604@gmail.com' ||
         claims.email?.toLowerCase() === 'admin@fossclub.tech';
 
-      const targetRole: Role = isOidcAdmin ? 'ADMIN' : 'USER';
-      const clubRole: string =
-        rawRole === 'admin' || isOidcAdmin || targetRole === 'ADMIN'
+      // Sole authoritative role in DB: directly fetched from OIDC club role
+      const targetRole: Role =
+        isOidcAdmin
           ? 'admin'
-          : (rawRole === 'lead' || rawRole === 'core')
-            ? rawRole
-            : 'member';
+          : rawRoles.includes('lead')
+            ? 'lead'
+            : rawRoles.includes('core')
+              ? 'core'
+              : 'member';
 
       // Step 1: Find existing account by stable OIDC subject
       const dbLookupStart = Date.now();
@@ -197,31 +221,18 @@ export const authController = {
       // Fallback check if account was registered by username or email before linking oidcSub
       if (!user && claims.preferred_username) {
         const existingByName = await dbService.getUserByUsername(claims.preferred_username);
-        if (existingByName && (!existingByName.oidcSub || existingByName.oidcSub === claims.sub)) {
-          user = await dbService.updateUser(existingByName.id, {
-            oidcSub: claims.sub,
-            avatarUrl: claims.picture || existingByName.avatarUrl,
-            role: (existingByName.role === 'ADMIN' || isOidcAdmin) ? 'ADMIN' : existingByName.role,
-          });
+        if (existingByName && existingByName.oidcSub === claims.sub) {
+          user = existingByName;
         }
       }
 
       if (!user && claims.email) {
         const existingByEmail = await dbService.getUserByEmail(claims.email);
-        if (existingByEmail && (!existingByEmail.oidcSub || existingByEmail.oidcSub === claims.sub)) {
-          user = await dbService.updateUser(existingByEmail.id, {
-            oidcSub: claims.sub,
-            avatarUrl: claims.picture || existingByEmail.avatarUrl,
-            role: (existingByEmail.role === 'ADMIN' || isOidcAdmin) ? 'ADMIN' : existingByEmail.role,
-          });
-        }
-      }
-
-      if (!user) {
-        // Step 2: Security requirement: Do not automatically link solely by matching email if another oidcSub conflict
-        if (claims.email) {
-          const existingByEmail = await dbService.getUserByEmail(claims.email);
-          if (existingByEmail && existingByEmail.oidcSub && existingByEmail.oidcSub !== claims.sub) {
+        if (existingByEmail) {
+          if (existingByEmail.oidcSub === claims.sub) {
+            user = existingByEmail;
+          } else {
+            // Security requirement: Do not automatically link solely by matching email if unlinked or conflicting oidcSub
             console.warn(`⚠️  [OIDC_CALLBACK:CONFLICT] duration=${Date.now() - callbackStart}ms code=ACCOUNT_CONFLICT_UNLINKED`);
             res.status(409).json({
               success: false,
@@ -234,7 +245,20 @@ export const authController = {
             return;
           }
         }
+      }
 
+      if (user) {
+        // Authoritative role & profile synchronization on every login (supports promotions, demotions, etc.)
+        const shouldUpdateRole = user.role !== targetRole;
+        const shouldUpdateAvatar = Boolean(claims.picture && user.avatarUrl !== claims.picture);
+
+        if (shouldUpdateRole || shouldUpdateAvatar) {
+          user = await dbService.updateUser(user.id, {
+            role: targetRole,
+            avatarUrl: claims.picture || user.avatarUrl,
+          });
+        }
+      } else {
         // Generate clean unique username
         const baseUsername =
           claims.preferred_username ||
@@ -257,20 +281,12 @@ export const authController = {
           oidcSub: claims.sub,
           avatarUrl: claims.picture || null,
         });
-      } else {
-        // User exists: sync role or avatar if changed/promoted
-        if ((isOidcAdmin && user.role !== 'ADMIN') || (claims.picture && user.avatarUrl !== claims.picture)) {
-          user = await dbService.updateUser(user.id, {
-            role: isOidcAdmin ? 'ADMIN' : user.role,
-            avatarUrl: claims.picture || user.avatarUrl,
-          });
-        }
       }
 
       const dbLookupMs = Date.now() - dbLookupStart;
-      console.log(`⏱️  [OIDC_CALLBACK:DB] duration=${dbLookupMs}ms userResolved=true role=${user.role} clubRole=${clubRole}`);
+      console.log(`⏱️  [OIDC_CALLBACK:DB] duration=${dbLookupMs}ms userResolved=true role=${user.role}`);
 
-      const finalClubRole = user.role === 'ADMIN' ? 'admin' : clubRole;
+      const finalClubRole = user.role;
 
       // Issue internal CTF session token
       const sessionToken = signToken({
@@ -408,7 +424,7 @@ export const authController = {
     }
 
     // Role and teamId are strictly taken from the authoritative database record
-    const devClubRole = user.role === 'ADMIN' ? 'admin' : 'member';
+    const devClubRole = user.role?.toLowerCase() === 'admin' ? 'admin' : user.role;
     const token = signToken({
       id: user.id,
       email: user.email,
@@ -479,20 +495,17 @@ export const authController = {
       // Check admin status for mridulxjain
       if (
         (user.username.toLowerCase() === 'mridulxjain' || user.email.toLowerCase() === 'krishnajain2604@gmail.com') &&
-        user.role !== 'ADMIN'
+        user.role?.toLowerCase() !== 'admin'
       ) {
-        user = await dbService.updateUser(user.id, { role: 'ADMIN' });
+        user = await dbService.updateUser(user.id, { role: 'admin' });
       }
 
       const effectiveRole: Role =
         (user.username.toLowerCase() === 'mridulxjain' || user.email.toLowerCase() === 'krishnajain2604@gmail.com')
-          ? 'ADMIN'
+          ? 'admin'
           : user.role;
 
-      const effectiveClubRole =
-        effectiveRole === 'ADMIN'
-          ? 'admin'
-          : (req.user.clubRole || (user as any).clubRole || 'member');
+      const effectiveClubRole = effectiveRole;
 
       const team = user.teamId ? await dbService.getTeam(user.teamId) : null;
       console.log(`⏱️  [AUTH_ME] duration=${Date.now() - meStart}ms authenticated=true hasTeam=${!!team} role=${effectiveRole} clubRole=${effectiveClubRole}`);

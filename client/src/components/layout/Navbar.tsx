@@ -92,8 +92,8 @@ export const Navbar: React.FC = () => {
 
   // Admin privileges check (supporting OIDC role extraction, DB role, or mridulxjain)
   const isAdminUser =
-    user?.role === 'ADMIN' ||
-    user?.clubRole === 'admin' ||
+    user?.role?.toLowerCase() === 'admin' ||
+    user?.clubRole?.toLowerCase() === 'admin' ||
     user?.username?.toLowerCase() === 'mridulxjain';
 
   // Navigation items with custom pastel colors for neobrutalist active states

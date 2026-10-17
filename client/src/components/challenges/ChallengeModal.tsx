@@ -186,7 +186,7 @@ export const ChallengeModal: React.FC<ChallengeModalProps> = ({
   }, [onClose]);
 
   const handleStartChallenge = async () => {
-    if (user?.role === 'ADMIN' && !team) {
+    if (user?.role?.toLowerCase() === 'admin' && !team) {
       const target = challenge?.externalUrl || 'https://ctffoss.vercel.app';
       window.open(target, '_blank', 'noopener,noreferrer');
       return;
@@ -431,7 +431,7 @@ export const ChallengeModal: React.FC<ChallengeModalProps> = ({
               {/* SECTION: Timed Loventia Competition Attempt Controls */}
               {isCompetitionChallenge && !isSolved && (
                 <div className="p-4 rounded-md border border-zinc-800 bg-zinc-900/60 space-y-4">
-                  {user?.role === 'ADMIN' && (
+                  {user?.role?.toLowerCase() === 'admin' && (
                     <div className="p-3 rounded-md bg-emerald-950/40 border border-emerald-800/60 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
                       <div>
                         <div className="flex items-center gap-1.5 text-emerald-400 font-medium">
@@ -454,7 +454,7 @@ export const ChallengeModal: React.FC<ChallengeModalProps> = ({
                     </div>
                   )}
 
-                  {!challenge.externalUrl && user?.role !== 'ADMIN' ? (
+                  {!challenge.externalUrl && user?.role?.toLowerCase() !== 'admin' ? (
                     <div className="relative overflow-hidden rounded-md border border-amber-900/40 bg-zinc-950 p-5">
                       <div className="absolute inset-0 backdrop-blur-sm bg-zinc-950/75 z-10 flex flex-col items-center justify-center p-4 text-center">
                         <div className="p-2.5 rounded-full bg-zinc-900 border border-amber-800/60 mb-2">
@@ -487,7 +487,7 @@ export const ChallengeModal: React.FC<ChallengeModalProps> = ({
 
                           <button
                             onClick={handleStartChallenge}
-                            disabled={startingSession || (!team && user?.role !== 'ADMIN')}
+                            disabled={startingSession || (!team && user?.role?.toLowerCase() !== 'admin')}
                             className="px-3.5 py-2 rounded-md bg-emerald-600 hover:bg-emerald-500 text-white font-medium text-xs transition-colors flex items-center justify-center gap-1.5 shrink-0 disabled:opacity-50"
                           >
                             <Play className="w-3 h-3 fill-current" />

@@ -181,8 +181,8 @@ export const ChallengesPage: React.FC = () => {
 
   const isLive = competition?.state === 'LIVE';
   const isAdmin =
-    user?.role === 'ADMIN' ||
-    user?.clubRole === 'admin' ||
+    user?.role?.toLowerCase() === 'admin' ||
+    user?.clubRole?.toLowerCase() === 'admin' ||
     user?.username?.toLowerCase() === 'mridulxjain';
   const isSolved = Boolean(loventiaChallenge?.isSolvedByTeam || compAttempt?.status === 'COMPLETED');
 

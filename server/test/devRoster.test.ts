@@ -50,6 +50,7 @@ function makeRequest(
 
 test.before(async () => {
   // Ensure development storage is primed
+  dbService.setStorageDriver('memory');
   await dbService.initStorage();
   await dbService.seedDevFixtures();
 
@@ -284,5 +285,9 @@ test('LOCAL DEV TEST SQUAD: 4 Fake Teams and 16 Participants Suite', async (t) =
     const adminTeamsRes = await makeRequest('GET', '/api/v1/admin/teams', { Cookie: cookieAdmin });
     assert.equal(adminTeamsRes.status, 200);
     assert.ok(Array.isArray(adminTeamsRes.body.data));
+  });
+
+  t.after(async () => {
+    dbService.setStorageDriver(null);
   });
 });

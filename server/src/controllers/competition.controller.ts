@@ -426,7 +426,7 @@ export const competitionController = {
    * transitions atomically to LIVE, and is idempotent.
    */
   async adminStartCompetition(req: Request, res: Response): Promise<void> {
-    if (req.user?.role !== 'ADMIN') {
+    if (req.user?.role?.toLowerCase() !== 'admin') {
       res.status(403).json({
         success: false,
         error: {

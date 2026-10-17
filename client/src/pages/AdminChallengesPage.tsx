@@ -42,8 +42,8 @@ export const AdminChallengesPage: React.FC = () => {
 
   // Clearance check: Only administrators can access
   const isAuthorizedAdmin =
-    user?.role === 'ADMIN' ||
-    user?.clubRole === 'admin' ||
+    user?.role?.toLowerCase() === 'admin' ||
+    user?.clubRole?.toLowerCase() === 'admin' ||
     user?.username?.toLowerCase() === 'mridulxjain';
 
   if (!isAuthorizedAdmin) {
