@@ -1,3 +1,4 @@
+import crypto from 'crypto';
 import { prisma } from '../lib/prisma';
 import { hashFlag } from '../utils/crypto';
 import { config } from '../config/index';
@@ -135,6 +136,15 @@ export interface DBCompetitionAttempt {
   updatedAt: Date;
 }
 
+export interface DBTeamLoventiaFlag {
+  id: string;
+  teamId: string;
+  flag: string;
+  issuedAt: Date;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
 /**
  * In-memory fallback dataset for seamless zero-config local development
  * when PostgreSQL is not yet running or configured.
@@ -148,6 +158,8 @@ class MemoryCTFStore {
   sessions: Map<string, DBTeamChallengeSession> = new Map(); // key: `${teamId}:${challengeId}`
   attempts: Map<string, DBCompetitionAttempt> = new Map(); // key: teamId
   unlockedHints: Set<string> = new Set(); // "teamId:hintId"
+  loventiaFlags: Map<string, DBTeamLoventiaFlag> = new Map(); // key: teamId
+  loventiaFlagsByFlag: Map<string, DBTeamLoventiaFlag> = new Map(); // key: flag string
   competitionConfig: DBCompetitionConfig = {
     id: 'main',
     title: 'FOSS CTF 2026',
@@ -443,6 +455,43 @@ class MemoryCTFStore {
 
     this.solves = [];
     this.sessions = new Map();
+    this.loventiaFlags = new Map();
+    this.loventiaFlagsByFlag = new Map();
+  }
+
+  getOrCreateTeamLoventiaFlag(teamId: string): DBTeamLoventiaFlag {
+    const existing = this.loventiaFlags.get(teamId);
+    if (existing) {
+      return existing;
+    }
+    const flagString = `FOSSCTF{loventia_${crypto.randomBytes(16).toString('hex')}}`;
+    const now = new Date();
+    const record: DBTeamLoventiaFlag = {
+      id: `flag-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+      teamId,
+      flag: flagString,
+      issuedAt: now,
+      createdAt: now,
+      updatedAt: now,
+    };
+    this.loventiaFlags.set(teamId, record);
+    this.loventiaFlagsByFlag.set(flagString, record);
+    return record;
+  }
+
+  getTeamLoventiaFlag(teamId: string): DBTeamLoventiaFlag | null {
+    return this.loventiaFlags.get(teamId) || null;
+  }
+
+  findTeamByLoventiaFlag(flag: string): { teamId: string; teamName: string; flag: string } | null {
+    const record = this.loventiaFlagsByFlag.get(flag);
+    if (!record) return null;
+    const team = this.teams.get(record.teamId);
+    return {
+      teamId: record.teamId,
+      teamName: team?.name || record.teamId,
+      flag: record.flag,
+    };
   }
 }
 
@@ -2943,6 +2992,36 @@ export const dbService = {
       isPaused: false,
     });
 
+    // Initialize synchronized competition attempts for all eligible teams under the global timer
+    if (hasDb) {
+      for (const t of eligibleTeams) {
+        await prisma.competitionAttempt.upsert({
+          where: { teamId: t.id },
+          update: {}, // preserve existing if already present
+          create: {
+            teamId: t.id,
+            status: 'IN_PROGRESS',
+            startedAt: now,
+          },
+        }).catch(() => null);
+      }
+    } else {
+      for (const t of eligibleTeams) {
+        if (!memoryStore.attempts.has(t.id)) {
+          memoryStore.attempts.set(t.id, {
+            id: `att-${Date.now()}-${t.id}`,
+            teamId: t.id,
+            status: 'IN_PROGRESS',
+            startedAt: now,
+            completedAt: null,
+            elapsedMs: null,
+            createdAt: now,
+            updatedAt: now,
+          });
+        }
+      }
+    }
+
     return {
       success: true,
       message: 'Competition successfully started. Loventia is now unlocked!',
@@ -2950,6 +3029,7 @@ export const dbService = {
       state: 'LIVE',
     };
   },
+
 
   /**
    * Sets or clears the mapped Valenfind team ID for a CTF team.
@@ -3247,6 +3327,65 @@ export const dbService = {
       updatedAt: new Date().toISOString(),
     };
   },
+
+  async getOrCreateTeamLoventiaFlag(teamId: string): Promise<DBTeamLoventiaFlag> {
+    if (this.getStorageDriver() === 'memory') {
+      return memoryStore.getOrCreateTeamLoventiaFlag(teamId);
+    }
+
+    const existing = await prisma.teamLoventiaFlag.findUnique({
+      where: { teamId },
+    });
+    if (existing) {
+      return existing;
+    }
+
+    const randomFlag = `FOSSCTF{loventia_${crypto.randomBytes(16).toString('hex')}}`;
+    try {
+      return await prisma.teamLoventiaFlag.create({
+        data: {
+          teamId,
+          flag: randomFlag,
+        },
+      });
+    } catch (createErr: any) {
+      if (createErr.code === 'P2002') {
+        const concurrent = await prisma.teamLoventiaFlag.findUnique({
+          where: { teamId },
+        });
+        if (concurrent) return concurrent;
+      }
+      throw createErr;
+    }
+  },
+
+  async getTeamLoventiaFlag(teamId: string): Promise<DBTeamLoventiaFlag | null> {
+    if (this.getStorageDriver() === 'memory') {
+      return memoryStore.getTeamLoventiaFlag(teamId);
+    }
+
+    return await prisma.teamLoventiaFlag.findUnique({
+      where: { teamId },
+    });
+  },
+
+  async findTeamByLoventiaFlag(flag: string): Promise<{ teamId: string; teamName: string; flag: string } | null> {
+    if (this.getStorageDriver() === 'memory') {
+      return memoryStore.findTeamByLoventiaFlag(flag);
+    }
+
+    const record = await prisma.teamLoventiaFlag.findUnique({
+      where: { flag },
+      include: { team: true },
+    });
+    if (!record) return null;
+    return {
+      teamId: record.teamId,
+      teamName: record.team?.name || record.teamId,
+      flag: record.flag,
+    };
+  },
+
 };
 
 function slugify(text: string): string {

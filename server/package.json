@@ -5,8 +5,8 @@
   "main": "dist/index.js",
   "scripts": {
     "dev": "tsx watch src/index.ts",
-    "test": "NODE_ENV=test tsx --test test/teamRegistration.test.ts test/oidc.test.ts test/devRoster.test.ts test/serverless.test.ts",
-    "test:all": "NODE_ENV=test tsx --test test/teamRegistration.test.ts test/competition.test.ts test/oidc.test.ts test/reliability.test.ts test/devRoster.test.ts test/serverless.test.ts",
+    "test": "tsx test/runTests.ts test/voucherRedemption.test.ts test/teamRegistration.test.ts test/oidc.test.ts test/devRoster.test.ts test/serverless.test.ts",
+    "test:all": "tsx test/runTests.ts test/voucherRedemption.test.ts test/teamRegistration.test.ts test/competition.test.ts test/oidc.test.ts test/reliability.test.ts test/devRoster.test.ts test/serverless.test.ts",
     "build": "npm run db:generate && tsc",
     "start": "node dist/index.js",
     "db:generate": "prisma generate",

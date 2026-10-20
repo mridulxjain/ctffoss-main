@@ -36,6 +36,16 @@ export const config = {
     process.env.LOVENTIA_VERIFY_SECRET ||
     process.env.VALENFIND_VERIFY_SECRET ||
     'foss-ctf-internal-verification-secret',
+  loventiaVoucherId:
+    process.env.LOVENTIA_VOUCHER_ID ||
+    (process.env.NODE_ENV === 'test'
+      ? 'TEST-VOUCHER-2026'
+      : (process.env.NODE_ENV !== 'production' ? 'LOVENTIA-DEV-VOUCHER' : '')),
+  loventiaPassphrase:
+    process.env.LOVENTIA_PASSPHRASE ||
+    (process.env.NODE_ENV === 'test'
+      ? 'test_passphrase_123'
+      : (process.env.NODE_ENV !== 'production' ? 'dev_passphrase_123' : '')),
   oidcIssuer: process.env.OIDC_ISSUER_URL || process.env.OIDC_ISSUER || 'https://oidc.fossclub.tech',
   oidcClientId: process.env.OIDC_CLIENT_ID || 'ctf',
   oidcClientSecret: process.env.OIDC_CLIENT_SECRET || '',
@@ -50,6 +60,8 @@ export const DEV_DEFAULT_SECRETS = {
   jwtSecret: 'foss-ctf-super-secure-dev-jwt-secret-key-replace-in-prod-32c',
   flagPepper: 'foss-ctf-flag-pepper-secret-dev-replace-in-prod',
   valenfindVerifySecret: 'foss-ctf-internal-verification-secret',
+  loventiaVoucherId: 'LOVENTIA-DEV-VOUCHER',
+  loventiaPassphrase: 'dev_passphrase_123',
 };
 
 /**
@@ -79,6 +91,14 @@ export function validateProductionConfig(): void {
 
   if (process.env.ENABLE_DEV_AUTH === 'true') {
     errors.push('ENABLE_DEV_AUTH must not be enabled in production.');
+  }
+
+  if (!process.env.LOVENTIA_VOUCHER_ID || process.env.LOVENTIA_VOUCHER_ID.trim() === '') {
+    console.warn('⚠️  [Config] LOVENTIA_VOUCHER_ID is not configured in production. Voucher redemption will fail safely until configured.');
+  }
+
+  if (!process.env.LOVENTIA_PASSPHRASE || process.env.LOVENTIA_PASSPHRASE.trim() === '') {
+    console.warn('⚠️  [Config] LOVENTIA_PASSPHRASE is not configured in production. Voucher redemption will fail safely until configured.');
   }
 
   if (!process.env.DATABASE_URL || process.env.DATABASE_URL.trim() === '') {

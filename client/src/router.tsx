@@ -3,6 +3,7 @@ import { createBrowserRouter, Navigate } from 'react-router-dom';
 import { AppLayout } from './components/layout/AppLayout';
 import { DashboardPage } from './pages/DashboardPage';
 import { ChallengesPage } from './pages/ChallengesPage';
+import { SubmitFlagPage } from './pages/SubmitFlagPage';
 import { ScoreboardPage } from './pages/ScoreboardPage';
 import { CompetitionLeaderboardPage } from './pages/CompetitionLeaderboardPage';
 import { TeamPage } from './pages/TeamPage';
@@ -25,6 +26,18 @@ export const router = createBrowserRouter([
       {
         path: 'challenges',
         element: <ChallengesPage />,
+      },
+      {
+        path: 'challenges/submit',
+        element: <Navigate to="/submit" replace />,
+      },
+      {
+        path: 'submit',
+        element: <SubmitFlagPage />,
+      },
+      {
+        path: 'submit-flag',
+        element: <Navigate to="/submit" replace />,
       },
       {
         path: 'scoreboard',

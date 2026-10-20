@@ -1,8 +1,25 @@
+import crypto from 'crypto';
 import { Request, Response } from 'express';
 import { dbService } from '../services/db.service';
 import { competitionAttemptService } from '../services/competitionAttempt.service';
 import { valenfindVerifierService } from '../services/valenfindVerifier.service';
+import { config } from '../config/index';
 import { setTeamReadinessSchema } from '../validators';
+
+function safeCompare(a: string, b: string): boolean {
+  if (typeof a !== 'string' || typeof b !== 'string') return false;
+  if (a.length > 1024 || b.length > 1024) return false;
+
+  const normA = a.trim();
+  const normB = b.trim();
+  if (normA.length === 0 || normB.length === 0) return false;
+
+  const hashA = crypto.createHash('sha256').update(normA, 'utf8').digest();
+  const hashB = crypto.createHash('sha256').update(normB, 'utf8').digest();
+
+  return crypto.timingSafeEqual(hashA, hashB);
+}
+
 
 export const competitionController = {
   /**
@@ -193,17 +210,25 @@ export const competitionController = {
       return;
     }
 
-    // 2. Retrieve team's attempt and verify IN_PROGRESS status
-    const attempt = await dbService.getCompetitionAttempt(teamId);
+    // 2. Check for server-issued team flag first (Loventia voucher redemption flow)
+    const loventiaFlagOwner = await dbService.findTeamByLoventiaFlag(cleanFlag);
+
+    // 3. Retrieve team's attempt and verify IN_PROGRESS status
+    let attempt = await dbService.getCompetitionAttempt(teamId);
     if (!attempt) {
-      res.status(400).json({
-        success: false,
-        error: {
-          message: 'You must start the competition attempt before submitting flags.',
-          code: 'ATTEMPT_NOT_FOUND',
-        },
-      });
-      return;
+      // If submitting the team's minted Loventia flag when LIVE, adapt to global timer semantics
+      if (loventiaFlagOwner && loventiaFlagOwner.teamId === teamId && compConfig.status === 'LIVE') {
+        attempt = await dbService.startCompetitionAttempt(teamId);
+      } else {
+        res.status(400).json({
+          success: false,
+          error: {
+            message: 'You must start the competition attempt before submitting flags.',
+            code: 'ATTEMPT_NOT_FOUND',
+          },
+        });
+        return;
+      }
     }
 
     if (attempt.status === 'COMPLETED') {
@@ -217,66 +242,81 @@ export const competitionController = {
       return;
     }
 
-    // 3. Resolve team mapping to Valenfind
-    const team = await dbService.getTeam(teamId);
-    if (!team?.valenfindTeamId) {
-      res.status(400).json({
-        success: false,
-        error: {
-          message: 'No verified Valenfind team mapping is configured for your team. Please contact administrators.',
-          code: 'TEAM_MAPPING_REQUIRED',
-        },
-      });
-      return;
-    }
-
-    // 4. Verify the submitted flag through the trusted verifier
-    let verification;
-    try {
-      verification = await valenfindVerifierService.verifyFlag(cleanFlag);
-    } catch (err: any) {
-      if (err.code === 'VERIFIER_UNAVAILABLE') {
-        res.status(503).json({
+    if (loventiaFlagOwner) {
+      // Verified server-issued team flag: enforce team ownership strictly
+      if (loventiaFlagOwner.teamId !== teamId) {
+        res.status(400).json({
           success: false,
           error: {
-            message: 'The flag verification service is temporarily unavailable. Please try again.',
-            code: 'VERIFIER_UNAVAILABLE',
+            message: 'The submitted flag belongs to another team and cannot be used to complete your attempt.',
+            code: 'FLAG_TEAM_MISMATCH',
+          },
+        });
+        return;
+      }
+      // Flag belongs to this authenticated team! Proceed directly to completion.
+    } else {
+      // 4. Fall back to external verifier / Valenfind mapping
+      const team = await dbService.getTeam(teamId);
+      if (!team?.valenfindTeamId) {
+        res.status(400).json({
+          success: false,
+          error: {
+            message: 'No verified Valenfind team mapping is configured for your team. Please contact administrators.',
+            code: 'TEAM_MAPPING_REQUIRED',
           },
         });
         return;
       }
 
-      res.status(500).json({
-        success: false,
-        error: {
-          message: err.message || 'An error occurred during flag verification.',
-          code: err.code || 'VERIFICATION_ERROR',
-        },
-      });
-      return;
-    }
+      // Verify the submitted flag through the trusted verifier
+      let verification;
+      try {
+        verification = await valenfindVerifierService.verifyFlag(cleanFlag);
+      } catch (err: any) {
+        if (err.code === 'VERIFIER_UNAVAILABLE') {
+          res.status(503).json({
+            success: false,
+            error: {
+              message: 'The flag verification service is temporarily unavailable. Please try again.',
+              code: 'VERIFIER_UNAVAILABLE',
+            },
+          });
+          return;
+        }
 
-    if (!verification.valid) {
-      res.status(400).json({
-        success: false,
-        error: {
-          message: 'Submitted flag is incorrect or was not issued.',
-          code: 'INVALID_FLAG',
-        },
-      });
-      return;
-    }
+        res.status(500).json({
+          success: false,
+          error: {
+            message: err.message || 'An error occurred during flag verification.',
+            code: err.code || 'VERIFICATION_ERROR',
+          },
+        });
+        return;
+      }
 
-    // 5. Verify the flag strictly belongs to the authenticated team
-    if (verification.valenfindTeamId !== team.valenfindTeamId) {
-      res.status(400).json({
-        success: false,
-        error: {
-          message: 'The submitted flag belongs to another team and cannot be used to complete your attempt.',
-          code: 'FLAG_TEAM_MISMATCH',
-        },
-      });
-      return;
+      if (!verification.valid) {
+        res.status(400).json({
+          success: false,
+          error: {
+            message: 'Submitted flag is incorrect or was not issued.',
+            code: 'INVALID_FLAG',
+          },
+        });
+        return;
+      }
+
+      // Verify the flag strictly belongs to the authenticated team
+      if (verification.valenfindTeamId !== team.valenfindTeamId) {
+        res.status(400).json({
+          success: false,
+          error: {
+            message: 'The submitted flag belongs to another team and cannot be used to complete your attempt.',
+            code: 'FLAG_TEAM_MISMATCH',
+          },
+        });
+        return;
+      }
     }
 
     // 6. Complete attempt using authoritative server timestamps
@@ -454,6 +494,174 @@ export const competitionController = {
           message: err.message || 'Failed to start competition',
           code,
           details: err.unreadyTeams ? { unreadyTeams: err.unreadyTeams } : undefined,
+        },
+      });
+    }
+  },
+
+  /**
+   * Redeems the shared Loventia voucher credentials and issues/retrieves a persistent team flag.
+   */
+  async redeemLoventiaVoucher(req: Request, res: Response): Promise<void> {
+    const userId = req.user?.id;
+    const teamId = req.user?.teamId;
+
+    if (!userId || !teamId) {
+      res.status(403).json({
+        success: false,
+        error: {
+          message: 'You must belong to a team in the FOSS Club identity system to redeem voucher flags.',
+          code: 'TEAM_REQUIRED',
+        },
+      });
+      return;
+    }
+
+    const { voucherId, passphrase } = req.body ?? {};
+    const cleanVoucherId = typeof voucherId === 'string' ? voucherId.trim() : '';
+    const cleanPassphrase = typeof passphrase === 'string' ? passphrase.trim() : '';
+
+    if (!cleanVoucherId || !cleanPassphrase) {
+      res.status(400).json({
+        success: false,
+        error: {
+          message: 'Voucher ID and Passphrase are required.',
+          code: 'MISSING_CREDENTIALS',
+        },
+      });
+      return;
+    }
+
+    // Enforce competition lifecycle state
+    const compConfig = await dbService.getCompetitionConfig();
+    if (compConfig.status === 'PREPARING' || compConfig.status === 'SCHEDULED') {
+      res.status(400).json({
+        success: false,
+        error: {
+          message: 'The competition has not started yet. Loventia voucher redemption is locked until official start.',
+          code: 'COMPETITION_NOT_LIVE',
+        },
+      });
+      return;
+    }
+    if (compConfig.status === 'ENDED') {
+      res.status(400).json({
+        success: false,
+        error: {
+          message: 'The competition has ended. Voucher redemption is closed.',
+          code: 'COMPETITION_ENDED',
+        },
+      });
+      return;
+    }
+    if (compConfig.status === 'PAUSED' || compConfig.status === 'DRAFT') {
+      res.status(400).json({
+        success: false,
+        error: {
+          message: 'The competition is currently inactive.',
+          code: 'COMPETITION_INACTIVE',
+        },
+      });
+      return;
+    }
+
+    const expectedVoucherId = config.loventiaVoucherId?.trim();
+    const expectedPassphrase = config.loventiaPassphrase?.trim();
+
+    if (!expectedVoucherId || !expectedPassphrase) {
+      console.error('❌ [Loventia Voucher] LOVENTIA_VOUCHER_ID or LOVENTIA_PASSPHRASE is not configured on this server.');
+      res.status(500).json({
+        success: false,
+        error: {
+          message: 'Voucher verification service is currently unconfigured. Please contact event administrators.',
+          code: 'VOUCHER_SERVICE_UNCONFIGURED',
+        },
+      });
+      return;
+    }
+
+    // Timing-safe constant-time comparison to prevent timing attacks
+    const isVoucherMatch = safeCompare(cleanVoucherId, expectedVoucherId);
+    const isPassphraseMatch = safeCompare(cleanPassphrase, expectedPassphrase);
+
+    if (!isVoucherMatch || !isPassphraseMatch) {
+      res.status(400).json({
+        success: false,
+        error: {
+          message: 'Invalid Voucher ID or Passphrase. Please verify the credentials discovered in the Loventia challenge.',
+          code: 'INVALID_VOUCHER_CREDENTIALS',
+        },
+      });
+      return;
+    }
+
+    try {
+      const teamFlagRecord = await dbService.getOrCreateTeamLoventiaFlag(teamId);
+
+      res.json({
+        success: true,
+        data: {
+          flag: teamFlagRecord.flag,
+          issuedAt: teamFlagRecord.issuedAt,
+          teamId,
+        },
+        message: 'Voucher verified! Your team flag has been issued. Submit this flag in the console below to complete your solve.',
+      });
+    } catch (err: any) {
+      console.error('❌ [Loventia Voucher] Error issuing team flag:', err?.message || err);
+      res.status(503).json({
+        success: false,
+        error: {
+          message: 'Database service is temporarily unavailable. Please try again.',
+          code: 'DATABASE_UNAVAILABLE',
+        },
+      });
+    }
+  },
+
+  /**
+   * Checks whether the authenticated team has already redeemed a Loventia voucher flag.
+   */
+  async getLoventiaVoucherStatus(req: Request, res: Response): Promise<void> {
+    const teamId = req.user?.teamId;
+
+    if (!teamId) {
+      res.status(403).json({
+        success: false,
+        error: {
+          message: 'You must belong to a team to check voucher status.',
+          code: 'TEAM_REQUIRED',
+        },
+      });
+      return;
+    }
+
+    try {
+      const existingFlag = await dbService.getTeamLoventiaFlag(teamId);
+      if (existingFlag) {
+        res.json({
+          success: true,
+          data: {
+            redeemed: true,
+            flag: existingFlag.flag,
+            issuedAt: existingFlag.issuedAt,
+          },
+        });
+      } else {
+        res.json({
+          success: true,
+          data: {
+            redeemed: false,
+          },
+        });
+      }
+    } catch (err: any) {
+      console.error('❌ [Loventia Voucher] Error checking voucher status:', err?.message || err);
+      res.status(503).json({
+        success: false,
+        error: {
+          message: 'Database service is temporarily unavailable. Please try again.',
+          code: 'DATABASE_UNAVAILABLE',
         },
       });
     }

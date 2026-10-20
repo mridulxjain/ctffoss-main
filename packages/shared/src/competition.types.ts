@@ -114,3 +114,16 @@ export function formatElapsedDuration(ms: number | null | undefined): string | n
   return `${mm}:${ss}.${sss}`;
 }
 
+export interface LoventiaVoucherRedeemResponse {
+  flag: string;
+  issuedAt: string | Date;
+  teamId: string;
+}
+
+export interface LoventiaVoucherStatusResponse {
+  redeemed: boolean;
+  flag?: string;
+  issuedAt?: string | Date;
+}
+
+

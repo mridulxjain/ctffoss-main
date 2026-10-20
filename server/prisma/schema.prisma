@@ -50,6 +50,7 @@ model Team {
   hintUnlocks   HintUnlock[]
   sessions      TeamChallengeSession[]
   attempts      CompetitionAttempt[]
+  loventiaFlag  TeamLoventiaFlag?
   totalScore    Int                    @default(0)
   lastSolveAt   DateTime?
   isReady       Boolean                @default(false)
@@ -230,4 +231,15 @@ model ApprovedRosterMember {
   @@index([email])
   @@index([teamName])
 }
+
+model TeamLoventiaFlag {
+  id        String   @id @default(uuid())
+  teamId    String   @unique
+  team      Team     @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  flag      String   @unique
+  issuedAt  DateTime @default(now())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
 

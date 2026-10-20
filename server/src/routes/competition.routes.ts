@@ -13,6 +13,14 @@ const attemptSubmissionLimiter = createRateLimiter({
   code: 'TOO_MANY_FLAG_SUBMISSIONS',
 });
 
+// Rate limiter: Max 5 voucher redemption attempts per 60 seconds per team
+const voucherRedemptionLimiter = createRateLimiter({
+  windowMs: 60 * 1000,
+  max: 5,
+  message: 'Too many voucher redemption attempts. Please wait 1 minute before trying again.',
+  code: 'TOO_MANY_VOUCHER_ATTEMPTS',
+});
+
 // Public competition status, schedule, and timed leaderboard
 router.get('/', competitionController.getStatus);
 router.get('/leaderboard', competitionController.getLeaderboard);
@@ -25,6 +33,10 @@ router.post('/attempt/start', requireAuth, requireTeam, competitionController.st
 router.get('/attempt', requireAuth, requireTeam, competitionController.getAttempt);
 router.post('/attempt/submit', requireAuth, requireTeam, attemptSubmissionLimiter, competitionController.submitAttemptFlag);
 router.post('/submit', requireAuth, requireTeam, attemptSubmissionLimiter, competitionController.submitAttemptFlag);
+
+// Loventia voucher redemption endpoints
+router.post('/loventia/redeem', requireAuth, requireTeam, voucherRedemptionLimiter, competitionController.redeemLoventiaVoucher);
+router.get('/loventia/voucher-status', requireAuth, requireTeam, competitionController.getLoventiaVoucherStatus);
 
 
 export default router;
