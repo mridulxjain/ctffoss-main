@@ -10,7 +10,8 @@ let failed = false;
 
 for (const file of files) {
   console.log(`\n========================================\n▶ Executing: ${file}\n========================================`);
-  const result = spawnSync('node', ['--import', 'tsx', '--test', file], {
+  const cmd = process.platform === 'win32' ? 'npx.cmd' : 'npx';
+  const result = spawnSync(cmd, ['tsx', file], {
     stdio: 'inherit',
     env: {
       ...process.env,

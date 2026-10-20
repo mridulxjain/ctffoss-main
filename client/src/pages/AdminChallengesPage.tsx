@@ -127,12 +127,13 @@ export const AdminChallengesPage: React.FC = () => {
         text: res?.message || 'Competition started! Loventia target unlocked for all participants.',
         isError: false,
       });
-      await fetchData();
     } catch (err: any) {
       setActionFeedback({
         text: err.message || 'Failed to start competition.',
         isError: true,
       });
+    } finally {
+      void fetchData();
     }
   };
 
@@ -162,12 +163,13 @@ export const AdminChallengesPage: React.FC = () => {
         text: 'Competition reset to PREPARING state. Participant gate is locked.',
         isError: false,
       });
-      await fetchData();
     } catch (err: any) {
       setActionFeedback({
         text: err.message || 'Failed to reset competition.',
         isError: true,
       });
+    } finally {
+      void fetchData();
     }
   };
 
@@ -199,12 +201,13 @@ export const AdminChallengesPage: React.FC = () => {
           : 'Competition resumed. Flag submissions are active.',
         isError: false,
       });
-      await fetchData();
     } catch (err: any) {
       setActionFeedback({
         text: err.message || 'Failed to update competition state.',
         isError: true,
       });
+    } finally {
+      void fetchData();
     }
   };
 

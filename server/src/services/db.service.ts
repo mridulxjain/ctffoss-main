@@ -2994,17 +2994,19 @@ export const dbService = {
 
     // Initialize synchronized competition attempts for all eligible teams under the global timer
     if (hasDb) {
-      for (const t of eligibleTeams) {
-        await prisma.competitionAttempt.upsert({
-          where: { teamId: t.id },
-          update: {}, // preserve existing if already present
-          create: {
-            teamId: t.id,
-            status: 'IN_PROGRESS',
-            startedAt: now,
-          },
-        }).catch(() => null);
-      }
+      const attemptsData = eligibleTeams.map((t) => ({
+        teamId: t.id,
+        status: 'IN_PROGRESS',
+        startedAt: now,
+      }));
+      await prisma.competitionAttempt
+        .createMany({
+          data: attemptsData,
+          skipDuplicates: true,
+        })
+        .catch((err) => {
+          console.error('Failed to bulk initialize competition attempts:', err);
+        });
     } else {
       for (const t of eligibleTeams) {
         if (!memoryStore.attempts.has(t.id)) {
