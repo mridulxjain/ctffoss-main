@@ -11,7 +11,11 @@ import {
   Search,
   AlertCircle,
   Zap,
+  ChevronLeft,
+  ChevronRight,
 } from 'lucide-react';
+
+const PAGE_SIZE = 10;
 
 export const CompetitionLeaderboardPage: React.FC = () => {
   const { team: currentTeam } = useAuth();
@@ -20,9 +24,13 @@ export const CompetitionLeaderboardPage: React.FC = () => {
   const [isManualRefreshing, setIsManualRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState('');
+  const [currentPage, setCurrentPage] = useState(1);
 
-  const fetchLeaderboard = async () => {
+  const fetchLeaderboard = async (showSkeleton = false) => {
     try {
+      if (showSkeleton) {
+        setLoading(true);
+      }
       setError(null);
       const res = await api.get('/competition/leaderboard');
       setData(res);
@@ -38,22 +46,32 @@ export const CompetitionLeaderboardPage: React.FC = () => {
   const handleRefresh = async () => {
     setIsManualRefreshing(true);
     try {
-      await fetchLeaderboard();
+      await fetchLeaderboard(true);
     } finally {
       setTimeout(() => setIsManualRefreshing(false), 650);
     }
   };
 
   useEffect(() => {
-    fetchLeaderboard();
-    const interval = setInterval(fetchLeaderboard, 20000);
+    fetchLeaderboard(true);
+    const interval = setInterval(() => fetchLeaderboard(false), 20000);
     return () => clearInterval(interval);
   }, []);
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [search]);
 
   const leaderboard = data?.leaderboard || [];
   const filtered = leaderboard.filter((entry) =>
     entry.teamName.toLowerCase().includes(search.toLowerCase())
   );
+
+  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+  const safeCurrentPage = Math.min(Math.max(1, currentPage), totalPages);
+  const startIndex = (safeCurrentPage - 1) * PAGE_SIZE;
+  const endIndex = startIndex + PAGE_SIZE;
+  const paginatedEntries = filtered.slice(startIndex, endIndex);
 
   // Solved podium slots (only assigned when flags are verified)
   const top1 = leaderboard.find((e) => e.rank === 1 && e.status === 'COMPLETED');
@@ -232,31 +250,72 @@ export const CompetitionLeaderboardPage: React.FC = () => {
         </div>
       </div>
 
-      {/* Search Bar (Sharp, Rough Neobrutalist Edges) */}
-      {!loading && leaderboard.length > 0 && (
-        <div className="flex flex-col sm:flex-row items-center justify-between gap-3 pt-2">
-          <div className="relative w-full sm:w-80">
-            <Search className="w-3.5 h-3.5 text-zinc-500 absolute left-3 top-1/2 -translate-y-1/2" />
-            <input
-              type="text"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="Search squad name..."
-              className="w-full pl-8 pr-3 py-2 bg-zinc-950 border-2 border-black font-mono text-xs text-zinc-200 placeholder-zinc-600 focus:outline-none focus:border-emerald-400 transition-colors shadow-[2px_2px_0px_#000]"
-            />
-          </div>
-
-          <div className="text-xs text-zinc-400 font-mono font-black uppercase tracking-wider">
-            {leaderboard.length} squads competing
-          </div>
+      {/* Search Bar (Sharp, Rough Neobrutalist Edges) - Always rendered to prevent layout shift */}
+      <div className="flex flex-col sm:flex-row items-center justify-between gap-3 pt-2">
+        <div className="relative w-full sm:w-80">
+          <Search className="w-3.5 h-3.5 text-zinc-500 absolute left-3 top-1/2 -translate-y-1/2" />
+          <input
+            type="text"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search squad name..."
+            className="w-full pl-8 pr-3 py-2 bg-zinc-950 border-2 border-black font-mono text-xs text-zinc-200 placeholder-zinc-600 focus:outline-none focus:border-emerald-400 transition-colors shadow-[2px_2px_0px_#000]"
+          />
         </div>
-      )}
+
+        <div className="text-xs text-zinc-400 font-mono font-black uppercase tracking-wider">
+          {leaderboard.length > 0 ? `${leaderboard.length} squads competing` : 'Standings live'}
+        </div>
+      </div>
 
       {/* Leaderboard Table (Not Curved, Rough 90-Degree Neobrutalist Edges) */}
       {loading ? (
-        <div className="py-20 text-center text-xs font-mono text-zinc-500 flex items-center justify-center gap-2">
-          <RefreshCw className="w-4 h-4 animate-spin text-emerald-400" />
-          <span>Loading synchronized telemetry...</span>
+        <div className="border-2 border-black bg-zinc-950 shadow-[4px_4px_0px_#000] overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="w-full text-left font-mono text-xs">
+              <thead className="bg-zinc-900 border-b-2 border-black text-zinc-300 uppercase text-[11px] font-black tracking-wider">
+                <tr>
+                  <th className="px-5 py-3.5 w-20 text-center">Rank</th>
+                  <th className="px-5 py-3.5">Squad</th>
+                  <th className="px-5 py-3.5 text-right w-44">Time Taken</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y-2 divide-zinc-800/80">
+                {Array.from({ length: 10 }).map((_, i) => {
+                  const widths = ['w-48', 'w-56', 'w-36', 'w-52', 'w-40', 'w-60', 'w-32', 'w-44', 'w-52', 'w-36'];
+                  const widthClass = widths[i % widths.length];
+
+                  return (
+                    <tr key={i} className="animate-pulse bg-zinc-950/40 h-[49px]">
+                      {/* Rank Skeleton */}
+                      <td className="px-5 py-3.5 text-center">
+                        <div className="inline-block w-8 h-6 bg-zinc-800/80 border border-zinc-700/60 shadow-[1px_1px_0px_#000]" />
+                      </td>
+
+                      {/* Squad Skeleton */}
+                      <td className="px-5 py-3.5">
+                        <div className="flex items-center gap-2.5">
+                          <div className={`h-4 bg-zinc-800/90 rounded-sm ${widthClass}`} />
+                          {i < 3 && (
+                            <div className="w-16 h-3.5 bg-zinc-800/40 rounded-sm border border-zinc-700/30" />
+                          )}
+                        </div>
+                      </td>
+
+                      {/* Time Skeleton */}
+                      <td className="px-5 py-3.5 text-right">
+                        <div className="inline-block w-20 h-5 bg-zinc-800/70 border border-zinc-700/40 shadow-[1px_1px_0px_#000]" />
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+          <div className="border-t-2 border-black bg-zinc-900/90 px-5 py-3.5 flex flex-col sm:flex-row items-center justify-between gap-3 font-mono text-xs">
+            <div className="h-4 w-48 bg-zinc-800/60 rounded animate-pulse" />
+            <div className="h-8 w-44 bg-zinc-800/40 rounded animate-pulse" />
+          </div>
         </div>
       ) : leaderboard.length === 0 ? (
         <div className="border-2 border-black bg-zinc-950 p-12 text-center space-y-2 shadow-[4px_4px_0px_#000]">
@@ -278,122 +337,201 @@ export const CompetitionLeaderboardPage: React.FC = () => {
                 </tr>
               </thead>
               <tbody className="divide-y-2 divide-zinc-800/80">
-                {filtered.length === 0 ? (
+                {paginatedEntries.length === 0 ? (
                   <tr>
                     <td colSpan={3} className="px-4 py-8 text-center text-zinc-500 font-mono">
                       No squads match your search filter.
                     </td>
                   </tr>
                 ) : (
-                  filtered.map((entry) => {
-                    const isCurrentTeam = currentTeam?.id === entry.teamId;
-                    const isSolved = entry.status === 'COMPLETED';
+                  <>
+                    {paginatedEntries.map((entry) => {
+                      const isCurrentTeam = currentTeam?.id === entry.teamId;
+                      const isSolved = entry.status === 'COMPLETED';
 
-                    // Podium placement effects ONLY when team has completed
-                    const isTop1 = isSolved && entry.rank === 1;
-                    const isTop2 = isSolved && entry.rank === 2;
-                    const isTop3 = isSolved && entry.rank === 3;
+                      // Podium placement effects ONLY when team has completed
+                      const isTop1 = isSolved && entry.rank === 1;
+                      const isTop2 = isSolved && entry.rank === 2;
+                      const isTop3 = isSolved && entry.rank === 3;
 
-                    let rowStyle = 'hover:bg-zinc-900/50 transition-colors';
-                    if (isTop1) {
-                      rowStyle = 'bg-amber-500/[0.06] border-l-4 border-l-amber-400 hover:bg-amber-500/[0.09]';
-                    } else if (isTop2) {
-                      rowStyle = 'bg-zinc-400/[0.04] border-l-4 border-l-zinc-300 hover:bg-zinc-400/[0.07]';
-                    } else if (isTop3) {
-                      rowStyle = 'bg-amber-700/[0.04] border-l-4 border-l-amber-600 hover:bg-amber-700/[0.07]';
-                    } else if (isCurrentTeam) {
-                      rowStyle = 'bg-emerald-950/20 border-l-4 border-l-emerald-400';
-                    }
+                      let rowStyle = 'hover:bg-zinc-900/50 transition-colors';
+                      if (isTop1) {
+                        rowStyle = 'bg-amber-500/[0.06] border-l-4 border-l-amber-400 hover:bg-amber-500/[0.09]';
+                      } else if (isTop2) {
+                        rowStyle = 'bg-zinc-400/[0.04] border-l-4 border-l-zinc-300 hover:bg-zinc-400/[0.07]';
+                      } else if (isTop3) {
+                        rowStyle = 'bg-amber-700/[0.04] border-l-4 border-l-amber-600 hover:bg-amber-700/[0.07]';
+                      } else if (isCurrentTeam) {
+                        rowStyle = 'bg-emerald-950/20 border-l-4 border-l-emerald-400';
+                      }
 
-                    return (
-                      <tr key={entry.teamId} className={`${rowStyle} transition-colors`}>
-                        {/* Rank Column */}
-                        <td className="px-5 py-3.5 text-center">
-                          {isTop1 ? (
-                            <div className="inline-flex items-center justify-center gap-1 px-2.5 py-1 bg-amber-400 text-black font-black text-xs border border-black shadow-[1px_1px_0px_#000]">
-                              <Crown className="w-3.5 h-3.5 fill-black stroke-black shrink-0" />
-                              <span>1</span>
+                      return (
+                        <tr key={entry.teamId} className={`${rowStyle} transition-colors h-[49px]`}>
+                          {/* Rank Column */}
+                          <td className="px-5 py-3.5 text-center">
+                            {isTop1 ? (
+                              <div className="inline-flex items-center justify-center gap-1 px-2.5 py-1 bg-amber-400 text-black font-black text-xs border border-black shadow-[1px_1px_0px_#000]">
+                                <Crown className="w-3.5 h-3.5 fill-black stroke-black shrink-0" />
+                                <span>1</span>
+                              </div>
+                            ) : isTop2 ? (
+                              <div className="inline-flex items-center justify-center gap-1 px-2.5 py-1 bg-zinc-300 text-black font-black text-xs border border-black shadow-[1px_1px_0px_#000]">
+                                <Medal className="w-3.5 h-3.5 stroke-black shrink-0" />
+                                <span>2</span>
+                              </div>
+                            ) : isTop3 ? (
+                              <div className="inline-flex items-center justify-center gap-1 px-2.5 py-1 bg-amber-600 text-white font-black text-xs border border-black shadow-[1px_1px_0px_#000]">
+                                <Award className="w-3.5 h-3.5 stroke-white shrink-0" />
+                                <span>3</span>
+                              </div>
+                            ) : (
+                              <span className="text-zinc-500 font-mono text-xs">#{entry.rank}</span>
+                            )}
+                          </td>
+
+                          {/* Squad Name Column */}
+                          <td className="px-5 py-3.5">
+                            <div className="flex items-center gap-2.5 flex-wrap">
+                              <span
+                                className={`font-bold ${
+                                  isTop1
+                                    ? 'text-amber-300 text-sm'
+                                    : isTop2
+                                    ? 'text-zinc-100 text-sm'
+                                    : isTop3
+                                    ? 'text-amber-200 text-sm'
+                                    : isCurrentTeam
+                                    ? 'text-emerald-400 text-sm'
+                                    : 'text-zinc-200 text-xs sm:text-sm'
+                                }`}
+                              >
+                                {entry.teamName}
+                              </span>
+
+                              {/* Placement badges ONLY shown when flag captured */}
+                              {isTop1 && (
+                                <span className="text-[9px] font-mono font-black uppercase tracking-wider px-2 py-0.5 bg-amber-400 text-black border border-black shadow-[1px_1px_0px_#000]">
+                                  Champion
+                                </span>
+                              )}
+                              {isTop2 && (
+                                <span className="text-[9px] font-mono font-black uppercase tracking-wider px-2 py-0.5 bg-zinc-300 text-black border border-black shadow-[1px_1px_0px_#000]">
+                                  Runner-Up
+                                </span>
+                              )}
+                              {isTop3 && (
+                                <span className="text-[9px] font-mono font-black uppercase tracking-wider px-2 py-0.5 bg-amber-600 text-white border border-black shadow-[1px_1px_0px_#000]">
+                                  3rd Podium
+                                </span>
+                              )}
+                              {isCurrentTeam && (
+                                <span className="text-[9px] font-mono font-black uppercase px-2 py-0.5 bg-emerald-400 text-black border border-black shadow-[1px_1px_0px_#000]">
+                                  You
+                                </span>
+                              )}
                             </div>
-                          ) : isTop2 ? (
-                            <div className="inline-flex items-center justify-center gap-1 px-2.5 py-1 bg-zinc-300 text-black font-black text-xs border border-black shadow-[1px_1px_0px_#000]">
-                              <Medal className="w-3.5 h-3.5 stroke-black shrink-0" />
-                              <span>2</span>
-                            </div>
-                          ) : isTop3 ? (
-                            <div className="inline-flex items-center justify-center gap-1 px-2.5 py-1 bg-amber-600 text-white font-black text-xs border border-black shadow-[1px_1px_0px_#000]">
-                              <Award className="w-3.5 h-3.5 stroke-white shrink-0" />
-                              <span>3</span>
-                            </div>
-                          ) : (
-                            <span className="text-zinc-500 font-mono text-xs">#{entry.rank}</span>
-                          )}
-                        </td>
+                          </td>
 
-                        {/* Squad Name Column */}
-                        <td className="px-5 py-3.5">
-                          <div className="flex items-center gap-2.5 flex-wrap">
-                            <span
-                              className={`font-bold ${
-                                isTop1
-                                  ? 'text-amber-300 text-sm'
-                                  : isTop2
-                                  ? 'text-zinc-100 text-sm'
-                                  : isTop3
-                                  ? 'text-amber-200 text-sm'
-                                  : isCurrentTeam
-                                  ? 'text-emerald-400 text-sm'
-                                  : 'text-zinc-200 text-xs sm:text-sm'
-                              }`}
-                            >
-                              {entry.teamName}
-                            </span>
+                          {/* Time Taken Column */}
+                          <td className="px-5 py-3.5 text-right font-mono">
+                            {isSolved ? (
+                              <span className="inline-flex items-center gap-1.5 text-emerald-400 font-black text-sm">
+                                <Timer className="w-3.5 h-3.5 text-emerald-400" />
+                                <span>{entry.formattedDuration || '00:00'}</span>
+                              </span>
+                            ) : entry.status === 'IN_PROGRESS' ? (
+                              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-amber-950/40 text-amber-400 border border-amber-500/40 text-[11px] font-mono font-bold shadow-[1px_1px_0px_#000]">
+                                <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse motion-reduce:animate-none" />
+                                <span>In Flight</span>
+                              </span>
+                            ) : (
+                              <span className="text-zinc-600 text-xs font-mono font-bold">—</span>
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })}
 
-                            {/* Placement badges ONLY shown when flag captured */}
-                            {isTop1 && (
-                              <span className="text-[9px] font-mono font-black uppercase tracking-wider px-2 py-0.5 bg-amber-400 text-black border border-black shadow-[1px_1px_0px_#000]">
-                                Champion
-                              </span>
-                            )}
-                            {isTop2 && (
-                              <span className="text-[9px] font-mono font-black uppercase tracking-wider px-2 py-0.5 bg-zinc-300 text-black border border-black shadow-[1px_1px_0px_#000]">
-                                Runner-Up
-                              </span>
-                            )}
-                            {isTop3 && (
-                              <span className="text-[9px] font-mono font-black uppercase tracking-wider px-2 py-0.5 bg-amber-600 text-white border border-black shadow-[1px_1px_0px_#000]">
-                                3rd Podium
-                              </span>
-                            )}
-                            {isCurrentTeam && (
-                              <span className="text-[9px] font-mono font-black uppercase px-2 py-0.5 bg-emerald-400 text-black border border-black shadow-[1px_1px_0px_#000]">
-                                You
-                              </span>
-                            )}
-                          </div>
-                        </td>
-
-                        {/* Time Taken Column */}
-                        <td className="px-5 py-3.5 text-right font-mono">
-                          {isSolved ? (
-                            <span className="inline-flex items-center gap-1.5 text-emerald-400 font-black text-sm">
-                              <Timer className="w-3.5 h-3.5 text-emerald-400" />
-                              <span>{entry.formattedDuration || '00:00'}</span>
-                            </span>
-                          ) : entry.status === 'IN_PROGRESS' ? (
-                            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-amber-950/40 text-amber-400 border border-amber-500/40 text-[11px] font-mono font-bold shadow-[1px_1px_0px_#000]">
-                              <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse motion-reduce:animate-none" />
-                              <span>In Flight</span>
-                            </span>
-                          ) : (
-                            <span className="text-zinc-600 text-xs font-mono font-bold">—</span>
-                          )}
-                        </td>
-                      </tr>
-                    );
-                  })
+                    {/* Pad remaining slots up to PAGE_SIZE (10) so table height is locked and footer never jumps */}
+                    {paginatedEntries.length < PAGE_SIZE &&
+                      Array.from({ length: PAGE_SIZE - paginatedEntries.length }).map((_, idx) => {
+                        const slotNum = startIndex + paginatedEntries.length + idx + 1;
+                        return (
+                          <tr key={`empty-slot-${idx}`} className="h-[49px] opacity-25 select-none bg-zinc-950/20">
+                            <td className="px-5 py-3.5 text-center text-zinc-700 font-mono text-xs">
+                              #{slotNum}
+                            </td>
+                            <td className="px-5 py-3.5 text-zinc-700 font-mono text-xs">
+                              <span className="text-zinc-700 font-mono text-[11px] tracking-wider">—</span>
+                            </td>
+                            <td className="px-5 py-3.5 text-right font-mono text-zinc-700 text-xs">
+                              —
+                            </td>
+                          </tr>
+                        );
+                      })}
+                  </>
                 )}
               </tbody>
             </table>
+          </div>
+
+          {/* Pagination Footer (10 squads per page) */}
+          <div className="border-t-2 border-black bg-zinc-900/90 px-5 py-3.5 flex flex-col sm:flex-row items-center justify-between gap-3 font-mono text-xs">
+            <div className="text-zinc-400 text-center sm:text-left">
+              Showing <span className="text-zinc-100 font-black">{filtered.length === 0 ? 0 : startIndex + 1}</span>–
+              <span className="text-zinc-100 font-black">{Math.min(endIndex, filtered.length)}</span> of{' '}
+              <span className="text-emerald-400 font-black">{filtered.length}</span> squads
+              <span className="text-zinc-600 mx-2">//</span>
+              <span>
+                Page <span className="text-zinc-100 font-black">{safeCurrentPage}</span> of{' '}
+                <span className="text-zinc-100 font-black">{totalPages}</span>
+              </span>
+            </div>
+
+            {totalPages > 1 && (
+              <div className="flex items-center gap-1.5 select-none">
+                <button
+                  type="button"
+                  onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                  disabled={safeCurrentPage === 1}
+                  className="px-2.5 py-1.5 bg-zinc-950 hover:bg-zinc-800 disabled:opacity-40 disabled:hover:bg-zinc-950 text-zinc-200 border-2 border-black font-mono font-bold uppercase transition-all shadow-[2px_2px_0px_#000] active:translate-x-0.5 active:translate-y-0.5 flex items-center gap-1"
+                  title="Previous Page"
+                >
+                  <ChevronLeft className="w-3.5 h-3.5" />
+                  <span className="hidden sm:inline">Prev</span>
+                </button>
+
+                {Array.from({ length: totalPages }, (_, idx) => idx + 1).map((pageNum) => {
+                  const isActive = pageNum === safeCurrentPage;
+                  return (
+                    <button
+                      key={pageNum}
+                      type="button"
+                      onClick={() => setCurrentPage(pageNum)}
+                      className={`min-w-[32px] h-8 px-2 border-2 border-black font-mono font-black text-xs uppercase transition-all shadow-[2px_2px_0px_#000] active:translate-x-0.5 active:translate-y-0.5 ${
+                        isActive
+                          ? 'bg-emerald-400 text-black shadow-[2px_2px_0px_#000]'
+                          : 'bg-zinc-950 hover:bg-zinc-800 text-zinc-300'
+                      }`}
+                    >
+                      {pageNum}
+                    </button>
+                  );
+                })}
+
+                <button
+                  type="button"
+                  onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+                  disabled={safeCurrentPage === totalPages}
+                  className="px-2.5 py-1.5 bg-zinc-950 hover:bg-zinc-800 disabled:opacity-40 disabled:hover:bg-zinc-950 text-zinc-200 border-2 border-black font-mono font-bold uppercase transition-all shadow-[2px_2px_0px_#000] active:translate-x-0.5 active:translate-y-0.5 flex items-center gap-1"
+                  title="Next Page"
+                >
+                  <span className="hidden sm:inline">Next</span>
+                  <ChevronRight className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            )}
           </div>
         </div>
       )}

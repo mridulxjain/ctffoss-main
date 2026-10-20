@@ -1,4 +1,4 @@
-import { describe, it, before } from 'node:test';
+import { describe, it, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import http from 'http';
 import app from '../../api/index';
@@ -74,8 +74,13 @@ function invokeServerless(
 
 describe('VERCEL SERVERLESS FUNCTION: Entry Point & Routing Compatibility', () => {
   before(async () => {
+    dbService.setStorageDriver('memory');
     await dbService.initStorage();
     await dbService.seedDevFixtures();
+  });
+
+  after(() => {
+    dbService.setStorageDriver(null);
   });
 
   it('api/index.ts exports a valid Express application function', () => {

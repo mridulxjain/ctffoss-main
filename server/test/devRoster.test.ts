@@ -65,6 +65,7 @@ test.before(async () => {
 });
 
 test.after(async () => {
+  dbService.setStorageDriver(null);
   if (server) {
     await new Promise<void>((resolve) => server.close(() => resolve()));
   }

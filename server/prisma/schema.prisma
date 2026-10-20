@@ -218,3 +218,16 @@ model CompetitionAttempt {
   @@index([elapsedMs])
 }
 
+model ApprovedRosterMember {
+  id        String   @id @default(uuid())
+  regnId    String
+  teamName  String
+  email     String   @unique
+  isLeader  Boolean  @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([email])
+  @@index([teamName])
+}
+

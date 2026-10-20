@@ -17,6 +17,8 @@ out
 .env.local
 .env.*.local
 *.pem
+teams.csv
+*.csv
 
 # Logs
 npm-debug.log*

@@ -24,6 +24,8 @@ import {
   StartCompetitionResponse,
 } from '@fossctf/shared';
 import { DEV_TEAMS, DEV_PARTICIPANTS, DEV_ADMIN } from '../fixtures/devRoster';
+import { APPROVED_TEAMS, ApprovedTeam } from '../fixtures/approvedRoster';
+import { rosterService } from './roster.service';
 
 export interface DBUser {
   id: string;
@@ -657,6 +659,227 @@ export const dbService = {
     }
     user.teamId = teamId;
     return user;
+  },
+
+  /**
+   * Ensures all 28 approved event teams exist in active storage (PostgreSQL or Memory store).
+   * Idempotent: Preserves existing team UUIDs, scores, readiness, and Loventia voucher mappings.
+   */
+  async ensureApprovedTeams(teamsList?: readonly ApprovedTeam[]): Promise<{ created: number; updated: number; total: number }> {
+    const list = teamsList || APPROVED_TEAMS;
+    const hasDb = await checkPrisma();
+    let created = 0;
+    let updated = 0;
+
+    if (hasDb) {
+      for (const t of list) {
+        const existing = await prisma.team.findUnique({ where: { name: t.teamName } });
+        if (existing) {
+          if (existing.externalId !== t.regnId) {
+            await prisma.team.update({
+              where: { id: existing.id },
+              data: { externalId: t.regnId },
+            });
+            updated++;
+          }
+        } else {
+          await prisma.team.create({
+            data: {
+              name: t.teamName,
+              externalId: t.regnId,
+              isReady: false,
+            },
+          });
+          created++;
+        }
+      }
+      return { created, updated, total: list.length };
+    }
+
+    // In-memory store
+    for (const t of list) {
+      let found: DBTeam | undefined;
+      for (const memTeam of memoryStore.teams.values()) {
+        if (memTeam.name.toLowerCase() === t.teamName.toLowerCase()) {
+          found = memTeam;
+          break;
+        }
+      }
+
+      if (found) {
+        if (found.externalId !== t.regnId) {
+          found.externalId = t.regnId;
+          updated++;
+        }
+      } else {
+        const newTeamId = `team-approved-${t.regnId}`;
+        memoryStore.teams.set(newTeamId, {
+          id: newTeamId,
+          name: t.teamName,
+          externalId: t.regnId,
+          valenfindTeamId: null,
+          isReady: false,
+          readyAt: null,
+          totalScore: 0,
+          lastSolveAt: null,
+          members: [],
+          createdAt: new Date(),
+        });
+        created++;
+      }
+    }
+
+    return { created, updated, total: list.length };
+  },
+
+  /**
+   * Atomically associates an authenticated user with an approved event squad.
+   *
+   * Security & Integrity:
+   * - Enforces that the user exists and does not already belong to a squad.
+   * - Validates registeredEmail against verifiedEmail to prevent impersonation.
+   * - Verifies membership through the approved event roster.
+   * - Enforces competition lifecycle rules (closed after competition ends).
+   * - Avoids race conditions through atomic database updates.
+   */
+  async registerUserToTeam(params: {
+    userId: string;
+    teamName: string;
+    verifiedEmail: string;
+    registeredEmail?: string;
+  }): Promise<{ user: DBUser; team: DBTeam }> {
+    const { userId, teamName, verifiedEmail, registeredEmail } = params;
+
+    // 1. Verify user exists
+    const user = await this.getUser(userId);
+    if (!user) {
+      const err = new Error('User account not found');
+      (err as any).code = 'USER_NOT_FOUND';
+      throw err;
+    }
+
+    // 2. Enforce competition lifecycle rules: Registration permitted only during PREPARING or DRAFT
+    const compConfig = await this.getCompetitionConfig();
+    if (compConfig.status !== 'PREPARING' && compConfig.status !== 'DRAFT') {
+      const err = new Error(
+        compConfig.status === 'ENDED'
+          ? 'The competition has ended. Team registrations are closed.'
+          : 'The competition registration window has closed. Registration is only permitted before competition start.'
+      );
+      (err as any).code = 'COMPETITION_LOCKED';
+      throw err;
+    }
+
+    // 3. Existing team assignment handling:
+    // - Repeated valid registration requests for the same squad are idempotent.
+    // - Any attempt to switch or register for another squad while already assigned is strictly rejected.
+    if (user.teamId) {
+      const requestedTeam = await this.getTeamByName(teamName);
+      if (requestedTeam && user.teamId === requestedTeam.id) {
+        const currentTeam = await this.getTeam(user.teamId);
+        return { user, team: currentTeam || requestedTeam };
+      }
+      const err = new Error('Your account is already assigned to a squad. Changing squads is not permitted.');
+      (err as any).code = 'ALREADY_ASSIGNED';
+      throw err;
+    }
+
+    // 4. Resolve target team from roster
+    const candidateEmail =
+      registeredEmail && typeof registeredEmail === 'string' && registeredEmail.trim()
+        ? registeredEmail.trim()
+        : verifiedEmail;
+
+    const verification = await rosterService.verifyTeamMembership({
+      email: candidateEmail,
+      teamName,
+    });
+
+    if (!verification.valid) {
+      const err = new Error(verification.message);
+      (err as any).code = verification.code;
+      throw err;
+    }
+
+    // 5. Find team in database
+    const team = await this.getTeamByName(verification.team!.teamName);
+    if (!team) {
+      const err = new Error(`Squad "${verification.team!.teamName}" has not been initialized in the database. Please notify administrators.`);
+      (err as any).code = 'TEAM_NOT_FOUND';
+      throw err;
+    }
+
+    // 6. Critical identity verification:
+    // Ensure the verified OIDC identity matches the registered competition email.
+    // Entering an email address alone does NOT prove ownership.
+    const cleanCandidate = candidateEmail.trim().toLowerCase();
+    const cleanVerified = verifiedEmail.trim().toLowerCase();
+    if (cleanCandidate !== cleanVerified) {
+      const err = new Error(
+        `The registered competition email (${cleanCandidate}) differs from your verified sign-in identity (${cleanVerified}). Direct linking of an unverified email is not permitted. Please sign in through FOSS Club with your registered competition email or contact event administrators for assistance.`
+      );
+      (err as any).code = 'EMAIL_VERIFICATION_REQUIRED';
+      throw err;
+    }
+
+    // 7. Atomic assignment with concurrency race-condition protection
+    const hasDb = await checkPrisma();
+    let updatedUser: DBUser;
+
+    if (hasDb) {
+      const result = await prisma.$transaction(async (tx: any) => {
+        // Atomic update ensuring teamId is still null
+        const updateRes = await tx.user.updateMany({
+          where: { id: userId, teamId: null },
+          data: { teamId: team.id },
+        });
+
+        if (updateRes.count === 0) {
+          const raceErr = new Error('Concurrent registration detected or user already assigned to a team.');
+          (raceErr as any).code = 'ALREADY_ASSIGNED';
+          throw raceErr;
+        }
+
+        const u = await tx.user.findUnique({ where: { id: userId } });
+        return u;
+      });
+
+      updatedUser = {
+        id: result.id,
+        email: result.email,
+        username: result.username,
+        role: result.role as Role,
+        clubRole: result.role,
+        teamId: result.teamId,
+        oidcSub: result.oidcSub,
+        avatarUrl: result.avatarUrl,
+        createdAt: result.createdAt,
+      };
+    } else {
+      // In-memory atomic check
+      const memUser = memoryStore.users.get(userId);
+      if (!memUser) throw new Error('User not found in memory store');
+      if (memUser.teamId) {
+        const raceErr = new Error('User is already assigned to a team.');
+        (raceErr as any).code = 'ALREADY_ASSIGNED';
+        throw raceErr;
+      }
+      memUser.teamId = team.id;
+      updatedUser = { ...memUser };
+
+      const memTeam = memoryStore.teams.get(team.id);
+      if (memTeam && !memTeam.members.some((m) => m.id === userId)) {
+        memTeam.members.push(memUser);
+      }
+    }
+
+    // Refresh team context with members
+    const refreshedTeam = await this.getTeam(team.id);
+
+    return {
+      user: updatedUser,
+      team: refreshedTeam || team,
+    };
   },
 
   async updateUser(

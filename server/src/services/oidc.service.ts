@@ -12,6 +12,8 @@ export interface OidcTransactionState {
 export interface OidcVerifiedClaims {
   sub: string;
   email?: string;
+  email_verified?: boolean;
+  userinfoSubMismatch?: boolean;
   preferred_username?: string;
   name?: string;
   picture?: string;
@@ -185,9 +187,21 @@ export const oidcService = {
       }
 
       let userinfoClaims: any = {};
+      let userinfoSubMismatch = false;
       if (tokens.access_token && providerConfig.userinfo_endpoint) {
         try {
-          userinfoClaims = await oidc.fetchUserInfo(providerConfig, tokens.access_token, claims.sub);
+          const fetched = await oidc.fetchUserInfo(providerConfig, tokens.access_token, claims.sub);
+          if (fetched) {
+            // Security requirement: Ensure UserInfo belongs to the same validated OIDC subject as the ID token
+            if (fetched.sub && fetched.sub !== claims.sub) {
+              console.warn(
+                `⚠️  [OIDC_CALLBACK:USERINFO_MISMATCH] UserInfo sub ("${fetched.sub}") does not match ID token sub ("${claims.sub}"). Rejecting UserInfo claims.`
+              );
+              userinfoSubMismatch = true;
+            } else {
+              userinfoClaims = fetched;
+            }
+          }
         } catch {
           // Fallback cleanly to ID token claims if userinfo is not available
         }
@@ -198,6 +212,8 @@ export const oidcService = {
       return {
         sub: merged.sub,
         email: merged.email as string | undefined,
+        email_verified: merged.email_verified as boolean | undefined,
+        userinfoSubMismatch,
         preferred_username: merged.preferred_username as string | undefined,
         name: merged.name as string | undefined,
         picture: merged.picture as string | undefined,

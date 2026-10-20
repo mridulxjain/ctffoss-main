@@ -25,6 +25,7 @@ describe('RELIABILITY & SECURITY: Database, CORS, Secrets, Rate Limiting, and Au
   });
 
   after(async () => {
+    dbService.setStorageDriver(null);
     await new Promise<void>((resolve) => {
       server.close(() => resolve());
     });
@@ -56,8 +57,10 @@ describe('RELIABILITY & SECURITY: Database, CORS, Secrets, Rate Limiting, and Au
 
     it('Fails startup in production mode if PostgreSQL cannot be reached', async () => {
       const originalEnv = config.nodeEnv;
+      const originalCheck = dbService.isDatabaseConnected;
       (config as any).nodeEnv = 'production';
       dbService.setStorageDriver(null); // allow auto-detection
+      dbService.isDatabaseConnected = async () => false;
 
       await assert.rejects(
         async () => {
@@ -67,6 +70,7 @@ describe('RELIABILITY & SECURITY: Database, CORS, Secrets, Rate Limiting, and Au
       );
 
       (config as any).nodeEnv = originalEnv;
+      dbService.isDatabaseConnected = originalCheck;
       dbService.setStorageDriver('memory');
     });
 

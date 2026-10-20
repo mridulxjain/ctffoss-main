@@ -125,4 +125,9 @@ export const setTeamReadinessSchema = z.object({
   isReady: z.boolean({ required_error: 'isReady boolean flag is required' }),
 });
 
+export const teamRegistrationSchema = z.object({
+  teamName: z.string().min(1, 'Squad name is required').max(100, 'Squad name is too long').trim(),
+  registeredEmail: z.string().max(256).trim().optional().or(z.literal('')),
+});
+
 

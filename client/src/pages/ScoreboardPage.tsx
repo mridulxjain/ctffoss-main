@@ -3,13 +3,16 @@ import { Link } from 'react-router-dom';
 import { api } from '../lib/api';
 import type { ScoreboardEntryDTO } from '@fossctf/shared';
 import { useAuth } from '../context/AuthContext';
-import { Search, RefreshCw, Trophy, Timer, Award, Clock } from 'lucide-react';
+import { Search, RefreshCw, Trophy, Timer, Award, Clock, ChevronLeft, ChevronRight } from 'lucide-react';
+
+const PAGE_SIZE = 10;
 
 export const ScoreboardPage: React.FC = () => {
   const { team: currentTeam } = useAuth();
   const [leaderboard, setLeaderboard] = useState<ScoreboardEntryDTO[]>([]);
   const [search, setSearch] = useState('');
   const [loading, setLoading] = useState(true);
+  const [currentPage, setCurrentPage] = useState(1);
 
   const fetchScoreboard = async () => {
     try {
@@ -27,9 +30,19 @@ export const ScoreboardPage: React.FC = () => {
     fetchScoreboard();
   }, []);
 
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [search]);
+
   const filtered = leaderboard.filter((entry) =>
     entry.teamName.toLowerCase().includes(search.toLowerCase())
   );
+
+  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+  const safeCurrentPage = Math.min(Math.max(1, currentPage), totalPages);
+  const startIndex = (safeCurrentPage - 1) * PAGE_SIZE;
+  const endIndex = startIndex + PAGE_SIZE;
+  const paginatedEntries = filtered.slice(startIndex, endIndex);
 
   const topThree = leaderboard.slice(0, 3);
 
@@ -142,30 +155,68 @@ export const ScoreboardPage: React.FC = () => {
         </div>
       )}
 
-      {/* Search Bar & Table Header */}
-      {leaderboard.length > 0 && (
-        <div className="flex flex-col sm:flex-row items-center justify-between gap-3 pt-2">
-          <div className="relative w-full sm:w-72">
-            <Search className="w-3.5 h-3.5 text-zinc-500 absolute left-3 top-1/2 -translate-y-1/2" />
-            <input
-              type="text"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="Filter teams..."
-              className="w-full pl-8 pr-3 py-1.5 rounded-lg bg-zinc-900/60 border border-zinc-800 text-xs text-zinc-200 placeholder-zinc-500 focus:outline-none focus:border-zinc-700 transition-colors"
-            />
-          </div>
-
-          <div className="text-xs text-zinc-500 font-mono self-end sm:self-auto">
-            {leaderboard.length} {leaderboard.length === 1 ? 'team' : 'teams'} registered
-          </div>
+      {/* Search Bar & Table Header - Always rendered to prevent layout shift */}
+      <div className="flex flex-col sm:flex-row items-center justify-between gap-3 pt-2">
+        <div className="relative w-full sm:w-72">
+          <Search className="w-3.5 h-3.5 text-zinc-500 absolute left-3 top-1/2 -translate-y-1/2" />
+          <input
+            type="text"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Filter teams..."
+            className="w-full pl-8 pr-3 py-1.5 rounded-lg bg-zinc-900/60 border border-zinc-800 text-xs text-zinc-200 placeholder-zinc-500 focus:outline-none focus:border-zinc-700 transition-colors"
+          />
         </div>
-      )}
+
+        <div className="text-xs text-zinc-500 font-mono self-end sm:self-auto">
+          {leaderboard.length > 0 ? `${leaderboard.length} teams registered` : 'Points live'}
+        </div>
+      </div>
 
       {/* Standings Table or Empty State */}
       {loading ? (
-        <div className="py-20 text-center text-xs font-mono text-zinc-500">
-          Loading scoreboard standings...
+        <div className="rounded-xl border border-zinc-800 bg-zinc-900/30 overflow-hidden shadow-sm">
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-xs">
+              <thead className="bg-zinc-950/80 border-b border-zinc-800 text-zinc-400 font-medium">
+                <tr>
+                  <th className="px-4 py-3 w-16 text-center font-mono">Rank</th>
+                  <th className="px-4 py-3">Team</th>
+                  <th className="px-4 py-3 text-center w-28 font-mono">Solves</th>
+                  <th className="px-4 py-3 text-right w-32 font-mono">Score</th>
+                  <th className="px-4 py-3 text-right w-40 font-mono">Last Solve</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-zinc-800/60">
+                {Array.from({ length: 10 }).map((_, i) => {
+                  const widths = ['w-36', 'w-48', 'w-32', 'w-44', 'w-40', 'w-52', 'w-28', 'w-44', 'w-36', 'w-48'];
+                  return (
+                    <tr key={i} className="animate-pulse h-[49px]">
+                      <td className="px-4 py-3.5 text-center">
+                        <div className="inline-block w-5 h-5 rounded-full bg-zinc-800" />
+                      </td>
+                      <td className="px-4 py-3.5">
+                        <div className={`h-4 bg-zinc-800 rounded ${widths[i % widths.length]}`} />
+                      </td>
+                      <td className="px-4 py-3.5 text-center">
+                        <div className="inline-block w-8 h-4 bg-zinc-800/70 rounded" />
+                      </td>
+                      <td className="px-4 py-3.5 text-right">
+                        <div className="inline-block w-14 h-4 bg-zinc-800/80 rounded ml-auto" />
+                      </td>
+                      <td className="px-4 py-3.5 text-right">
+                        <div className="inline-block w-16 h-4 bg-zinc-800/60 rounded ml-auto" />
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+          <div className="border-t border-zinc-800 bg-zinc-950/60 px-4 py-3 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-zinc-400">
+            <div className="h-4 w-44 bg-zinc-800/60 rounded animate-pulse" />
+            <div className="h-7 w-36 bg-zinc-800/40 rounded animate-pulse" />
+          </div>
         </div>
       ) : leaderboard.length === 0 ? (
         <div className="rounded-xl border border-zinc-800 bg-zinc-900/20 p-12 text-center space-y-2">
@@ -189,75 +240,142 @@ export const ScoreboardPage: React.FC = () => {
                 </tr>
               </thead>
               <tbody className="divide-y divide-zinc-800/60 font-sans">
-                {filtered.length === 0 ? (
+                {paginatedEntries.length === 0 ? (
                   <tr>
                     <td colSpan={5} className="px-4 py-8 text-center text-zinc-500 font-mono">
                       No teams match your search filter.
                     </td>
                   </tr>
                 ) : (
-                  filtered.map((entry) => {
-                    const isCurrentTeam = currentTeam?.id === entry.teamId;
-                    return (
-                      <tr
-                        key={entry.teamId}
-                        className={`transition-colors hover:bg-zinc-900/80 ${
-                          isCurrentTeam ? 'bg-zinc-800/40' : ''
-                        }`}
-                      >
-                        <td className="px-4 py-3.5 text-center font-mono font-medium">
-                          {entry.rank <= 3 ? (
-                            <span
-                              className={`inline-flex items-center justify-center w-5 h-5 rounded-full text-center text-[11px] font-bold ${
-                                entry.rank === 1
-                                  ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40'
-                                  : entry.rank === 2
-                                  ? 'bg-zinc-400/20 text-zinc-300 border border-zinc-400/40'
-                                  : 'bg-amber-800/20 text-amber-500 border border-amber-800/40'
-                              }`}
-                            >
-                              {entry.rank}
-                            </span>
-                          ) : (
-                            <span className="text-zinc-500">{entry.rank}</span>
-                          )}
-                        </td>
-
-                        <td className="px-4 py-3.5 font-medium text-zinc-200">
-                          <div className="flex items-center gap-2">
-                            <span>{entry.teamName}</span>
-                            {isCurrentTeam && (
-                              <span className="text-[10px] font-mono px-1.5 py-0.2 rounded bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">
-                                You
+                  <>
+                    {paginatedEntries.map((entry) => {
+                      const isCurrentTeam = currentTeam?.id === entry.teamId;
+                      return (
+                        <tr
+                          key={entry.teamId}
+                          className={`transition-colors hover:bg-zinc-900/80 h-[49px] ${
+                            isCurrentTeam ? 'bg-zinc-800/40' : ''
+                          }`}
+                        >
+                          <td className="px-4 py-3.5 text-center font-mono font-medium">
+                            {entry.rank <= 3 ? (
+                              <span
+                                className={`inline-flex items-center justify-center w-5 h-5 rounded-full text-center text-[11px] font-bold ${
+                                  entry.rank === 1
+                                    ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40'
+                                    : entry.rank === 2
+                                    ? 'bg-zinc-400/20 text-zinc-300 border border-zinc-400/40'
+                                    : 'bg-amber-800/20 text-amber-500 border border-amber-800/40'
+                                }`}
+                              >
+                                {entry.rank}
                               </span>
+                            ) : (
+                              <span className="text-zinc-500">{entry.rank}</span>
                             )}
-                          </div>
-                        </td>
+                          </td>
 
-                        <td className="px-4 py-3.5 text-center font-mono text-zinc-400">
-                          {entry.solvesCount}
-                        </td>
+                          <td className="px-4 py-3.5 font-medium text-zinc-200">
+                            <div className="flex items-center gap-2">
+                              <span>{entry.teamName}</span>
+                              {isCurrentTeam && (
+                                <span className="text-[10px] font-mono px-1.5 py-0.2 rounded bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">
+                                  You
+                                </span>
+                              )}
+                            </div>
+                          </td>
 
-                        <td className="px-4 py-3.5 text-right font-mono font-bold text-zinc-100">
-                          {entry.totalScore}{' '}
-                          <span className="text-[11px] font-normal text-zinc-500">pts</span>
-                        </td>
+                          <td className="px-4 py-3.5 text-center font-mono text-zinc-400">
+                            {entry.solvesCount}
+                          </td>
 
-                        <td className="px-4 py-3.5 text-right font-mono text-zinc-500 text-[11px]">
-                          {entry.lastSolveAt
-                            ? new Date(entry.lastSolveAt).toLocaleTimeString([], {
-                                hour: '2-digit',
-                                minute: '2-digit',
-                                second: '2-digit',
-                              })
-                            : '—'}
-                        </td>
-                      </tr>
-                    );
-                  })
+                          <td className="px-4 py-3.5 text-right font-mono font-bold text-zinc-100">
+                            {entry.totalScore}{' '}
+                            <span className="text-[11px] font-normal text-zinc-500">pts</span>
+                          </td>
+
+                          <td className="px-4 py-3.5 text-right font-mono text-zinc-500 text-[11px]">
+                            {entry.lastSolveAt
+                              ? new Date(entry.lastSolveAt).toLocaleTimeString([], {
+                                  hour: '2-digit',
+                                  minute: '2-digit',
+                                  second: '2-digit',
+                                })
+                              : '—'}
+                          </td>
+                        </tr>
+                      );
+                    })}
+
+                    {/* Pad remaining slots up to PAGE_SIZE (10) */}
+                    {paginatedEntries.length < PAGE_SIZE &&
+                      Array.from({ length: PAGE_SIZE - paginatedEntries.length }).map((_, idx) => (
+                        <tr key={`empty-slot-${idx}`} className="h-[49px] opacity-25 select-none">
+                          <td className="px-4 py-3.5 text-center font-mono text-zinc-700">
+                            #{startIndex + paginatedEntries.length + idx + 1}
+                          </td>
+                          <td className="px-4 py-3.5 text-zinc-700 font-mono text-xs">—</td>
+                          <td className="px-4 py-3.5 text-center text-zinc-700 font-mono">—</td>
+                          <td className="px-4 py-3.5 text-right text-zinc-700 font-mono">—</td>
+                          <td className="px-4 py-3.5 text-right text-zinc-700 font-mono">—</td>
+                        </tr>
+                      ))}
+                  </>
                 )}
               </tbody>
             </table>
+          </div>
+
+          {/* Pagination Footer */}
+          <div className="border-t border-zinc-800 bg-zinc-950/60 px-4 py-3 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-zinc-400">
+            <div>
+              Showing <span className="text-zinc-200 font-semibold">{filtered.length === 0 ? 0 : startIndex + 1}</span>–
+              <span className="text-zinc-200 font-semibold">{Math.min(endIndex, filtered.length)}</span> of{' '}
+              <span className="text-zinc-200 font-semibold">{filtered.length}</span> teams (Page {safeCurrentPage} of {totalPages})
+            </div>
+
+            {totalPages > 1 && (
+              <div className="flex items-center gap-1.5 select-none font-mono">
+                <button
+                  type="button"
+                  onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                  disabled={safeCurrentPage === 1}
+                  className="px-2.5 py-1 rounded bg-zinc-900 border border-zinc-800 hover:bg-zinc-800 disabled:opacity-40 disabled:hover:bg-zinc-900 text-zinc-300 text-xs flex items-center gap-1"
+                >
+                  <ChevronLeft className="w-3.5 h-3.5" />
+                  <span className="hidden sm:inline">Prev</span>
+                </button>
+
+                {Array.from({ length: totalPages }, (_, idx) => idx + 1).map((pageNum) => {
+                  const isActive = pageNum === safeCurrentPage;
+                  return (
+                    <button
+                      key={pageNum}
+                      type="button"
+                      onClick={() => setCurrentPage(pageNum)}
+                      className={`min-w-[28px] h-7 px-2 rounded text-xs transition-colors ${
+                        isActive
+                          ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40 font-bold'
+                          : 'bg-zinc-900 border border-zinc-800 text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800'
+                      }`}
+                    >
+                      {pageNum}
+                    </button>
+                  );
+                })}
+
+                <button
+                  type="button"
+                  onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+                  disabled={safeCurrentPage === totalPages}
+                  className="px-2.5 py-1 rounded bg-zinc-900 border border-zinc-800 hover:bg-zinc-800 disabled:opacity-40 disabled:hover:bg-zinc-900 text-zinc-300 text-xs flex items-center gap-1"
+                >
+                  <span className="hidden sm:inline">Next</span>
+                  <ChevronRight className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            )}
           </div>
         </div>
       )}

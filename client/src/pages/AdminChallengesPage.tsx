@@ -25,6 +25,9 @@ import {
   Check,
   RefreshCw,
   X,
+  Search,
+  ChevronLeft,
+  ChevronRight,
 } from 'lucide-react';
 
 interface ConfirmModalState {
@@ -36,6 +39,8 @@ interface ConfirmModalState {
   theme: 'emerald' | 'amber' | 'rose';
   onConfirm: () => Promise<void>;
 }
+
+const ADMIN_TEAMS_PER_PAGE = 10;
 
 export const AdminChallengesPage: React.FC = () => {
   const { user } = useAuth();
@@ -57,6 +62,10 @@ export const AdminChallengesPage: React.FC = () => {
   const [, setLoading] = useState(true);
   const [copiedUrl, setCopiedUrl] = useState(false);
 
+  // Teams search and pagination state
+  const [teamSearch, setTeamSearch] = useState('');
+  const [teamPage, setTeamPage] = useState(1);
+
   // Custom Confirmation Modal state
   const [confirmModal, setConfirmModal] = useState<ConfirmModalState | null>(null);
   const [modalLoading, setModalLoading] = useState(false);
@@ -71,6 +80,10 @@ export const AdminChallengesPage: React.FC = () => {
 
   const targetUrl = 'https://ctffoss.vercel.app';
   const isCompStarted = competition?.state === 'LIVE' || competition?.state === 'ENDED';
+
+  useEffect(() => {
+    setTeamPage(1);
+  }, [teamSearch]);
 
   const fetchData = async () => {
     try {
@@ -232,6 +245,21 @@ export const AdminChallengesPage: React.FC = () => {
 
   const isLive = competition?.state === 'LIVE';
   const isPreparing = competition?.state === 'PREPARING';
+
+  const filteredTeams = teams.filter((t) => {
+    const q = teamSearch.toLowerCase().trim();
+    if (!q) return true;
+    return (
+      t.name.toLowerCase().includes(q) ||
+      (t.valenfindTeamId && t.valenfindTeamId.toLowerCase().includes(q))
+    );
+  });
+
+  const totalTeamPages = Math.max(1, Math.ceil(filteredTeams.length / ADMIN_TEAMS_PER_PAGE));
+  const safeTeamPage = Math.min(Math.max(1, teamPage), totalTeamPages);
+  const startTeamIdx = (safeTeamPage - 1) * ADMIN_TEAMS_PER_PAGE;
+  const endTeamIdx = startTeamIdx + ADMIN_TEAMS_PER_PAGE;
+  const paginatedTeams = filteredTeams.slice(startTeamIdx, endTeamIdx);
 
   return (
     <div className="max-w-5xl mx-auto px-4 sm:px-6 py-8 space-y-7">
@@ -463,16 +491,28 @@ export const AdminChallengesPage: React.FC = () => {
 
       {/* SECTION 3: Participating Squads & Voucher Mappings */}
       <section className="border border-zinc-800/80 bg-zinc-950/70 rounded-xl p-5 sm:p-6 space-y-4 shadow-sm">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-zinc-800 pb-3">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-zinc-800 pb-3">
           <div>
             <h2 className="text-sm font-semibold text-zinc-100">Squad Roster & Voucher Keys</h2>
             <p className="text-xs text-zinc-400">
               Manage team custom Loventia voucher IDs and monitor real-time attempt progress.
             </p>
           </div>
-          <span className="text-xs font-mono text-zinc-400 font-medium">
-            Total Squads: {teams.length}
-          </span>
+          <div className="flex items-center gap-3 w-full sm:w-auto">
+            <div className="relative w-full sm:w-64">
+              <Search className="w-3.5 h-3.5 text-zinc-500 absolute left-3 top-1/2 -translate-y-1/2" />
+              <input
+                type="text"
+                value={teamSearch}
+                onChange={(e) => setTeamSearch(e.target.value)}
+                placeholder="Search squad or voucher..."
+                className="w-full pl-8 pr-3 py-1.5 bg-zinc-900 border border-zinc-700/80 rounded-lg font-mono text-xs text-zinc-200 placeholder-zinc-500 focus:outline-none focus:border-emerald-500 transition-colors"
+              />
+            </div>
+            <span className="text-xs font-mono text-zinc-400 font-medium whitespace-nowrap hidden sm:inline">
+              Total: {teams.length}
+            </span>
+          </div>
         </div>
 
         <div className="overflow-x-auto rounded-lg border border-zinc-800">
@@ -487,14 +527,14 @@ export const AdminChallengesPage: React.FC = () => {
               </tr>
             </thead>
             <tbody className="divide-y divide-zinc-800/60 bg-zinc-950/50">
-              {teams.length === 0 ? (
+              {filteredTeams.length === 0 ? (
                 <tr>
                   <td colSpan={5} className="py-6 px-3.5 text-center text-zinc-500 font-mono">
-                    No teams registered yet.
+                    {teamSearch ? 'No squads match your search filter.' : 'No teams registered yet.'}
                   </td>
                 </tr>
               ) : (
-                teams.map((t) => {
+                paginatedTeams.map((t) => {
                   const isEditing = editingTeamId === t.id;
                   const readyEntry = readiness?.teams?.find((rt) => rt.teamId === t.id);
                   const isReady = Boolean(t.isReady || readyEntry?.isReady);
@@ -596,8 +636,75 @@ export const AdminChallengesPage: React.FC = () => {
                   );
                 })
               )}
+              {/* Pad remaining slots up to ADMIN_TEAMS_PER_PAGE (10) to lock table height and prevent footer jumping */}
+              {filteredTeams.length > 0 &&
+                paginatedTeams.length < ADMIN_TEAMS_PER_PAGE &&
+                Array.from({ length: ADMIN_TEAMS_PER_PAGE - paginatedTeams.length }).map((_, idx) => (
+                  <tr key={`admin-empty-slot-${idx}`} className="opacity-20 select-none bg-zinc-950/20">
+                    <td className="py-3 px-3.5 text-zinc-600 font-mono text-xs">
+                      #{startTeamIdx + paginatedTeams.length + idx + 1}
+                    </td>
+                    <td className="py-3 px-3.5 text-zinc-600 font-mono text-xs">—</td>
+                    <td className="py-3 px-3.5 text-zinc-600 font-mono text-xs">—</td>
+                    <td className="py-3 px-3.5 text-zinc-600 font-mono text-xs">—</td>
+                    <td className="py-3 px-3.5 text-right text-zinc-600 font-mono text-xs">—</td>
+                  </tr>
+                ))}
             </tbody>
           </table>
+        </div>
+
+        {/* Pagination Footer (10 squads per page) */}
+        <div className="border border-zinc-800 bg-zinc-900/40 rounded-lg px-4 py-3 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-zinc-400 font-mono">
+          <div>
+            Showing <span className="text-zinc-100 font-semibold">{filteredTeams.length === 0 ? 0 : startTeamIdx + 1}</span>–
+            <span className="text-zinc-100 font-semibold">{Math.min(endTeamIdx, filteredTeams.length)}</span> of{' '}
+            <span className="text-emerald-400 font-semibold">{filteredTeams.length}</span> squads (Page {safeTeamPage} of {totalTeamPages})
+          </div>
+
+          {totalTeamPages > 1 && (
+            <div className="flex items-center gap-1.5 select-none">
+              <button
+                type="button"
+                onClick={() => setTeamPage((p) => Math.max(1, p - 1))}
+                disabled={safeTeamPage === 1}
+                className="px-2.5 py-1 rounded-md bg-zinc-900 border border-zinc-800 hover:bg-zinc-800 disabled:opacity-40 disabled:hover:bg-zinc-900 text-zinc-300 text-xs flex items-center gap-1 transition-colors"
+                title="Previous Page"
+              >
+                <ChevronLeft className="w-3.5 h-3.5" />
+                <span className="hidden sm:inline">Prev</span>
+              </button>
+
+              {Array.from({ length: totalTeamPages }, (_, idx) => idx + 1).map((pageNum) => {
+                const isActive = pageNum === safeTeamPage;
+                return (
+                  <button
+                    key={pageNum}
+                    type="button"
+                    onClick={() => setTeamPage(pageNum)}
+                    className={`min-w-[28px] h-7 px-2 rounded-md text-xs font-semibold transition-colors ${
+                      isActive
+                        ? 'bg-emerald-500 text-zinc-950 font-bold shadow-sm'
+                        : 'bg-zinc-900 border border-zinc-800 text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800'
+                    }`}
+                  >
+                    {pageNum}
+                  </button>
+                );
+              })}
+
+              <button
+                type="button"
+                onClick={() => setTeamPage((p) => Math.min(totalTeamPages, p + 1))}
+                disabled={safeTeamPage === totalTeamPages}
+                className="px-2.5 py-1 rounded-md bg-zinc-900 border border-zinc-800 hover:bg-zinc-800 disabled:opacity-40 disabled:hover:bg-zinc-900 text-zinc-300 text-xs flex items-center gap-1 transition-colors"
+                title="Next Page"
+              >
+                <span className="hidden sm:inline">Next</span>
+                <ChevronRight className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          )}
         </div>
       </section>
 

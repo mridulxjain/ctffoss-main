@@ -49,8 +49,11 @@ function makeRequest(
   });
 }
 
-test.before(() => {
-  return new Promise((resolve) => {
+test.before(async () => {
+  dbService.setStorageDriver('memory');
+  await dbService.initStorage();
+
+  return new Promise<void>((resolve) => {
     server = app.listen(0, () => {
       const addr = server.address();
       if (addr && typeof addr === 'object') {
@@ -61,10 +64,14 @@ test.before(() => {
   });
 });
 
-test.after(() => {
-  return new Promise((resolve) => {
-    server.close(() => resolve());
-  });
+test.after(async () => {
+  dbService.setStorageDriver(null);
+  valenfindVerifierService.clearMockVerifier();
+  if (server) {
+    await new Promise<void>((resolve) => {
+      server.close(() => resolve());
+    });
+  }
 });
 
 test('IDENTITY & TEAMS: Read-only team enforcement and trusted membership', async (t) => {

@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { api } from '../lib/api';
+import React, { useState, useEffect, useRef } from 'react';
+import { api, getLoginUrl } from '../lib/api';
 import { useAuth } from '../context/AuthContext';
 import {
   Users,
@@ -7,17 +7,36 @@ import {
   Timer,
   Zap,
   CheckCircle2,
-  Shield,
-  HelpCircle,
+  ShieldCheck,
+  Search,
+  Check,
+  ChevronRight,
+  Mail,
+  Lock,
 } from 'lucide-react';
 import { formatElapsedDuration, type TeamDTO, type CompetitionAttemptDTO } from '@fossctf/shared';
 
 export const TeamPage: React.FC = () => {
-  const { user, team } = useAuth();
+  const { user, team, refreshSession } = useAuth();
   const [teamDetails, setTeamDetails] = useState<TeamDTO | null>(null);
   const [compAttempt, setCompAttempt] = useState<CompetitionAttemptDTO | null>(null);
   const [, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+
+  // Squad Registration Form State
+  const [squadQuery, setSquadQuery] = useState('');
+  const [selectedSquad, setSelectedSquad] = useState('');
+  const [registeredEmail, setRegisteredEmail] = useState('');
+  const [suggestions, setSuggestions] = useState<string[]>([]);
+  const [isSearching, setIsSearching] = useState(false);
+  const [isDropdownOpen, setIsDropdownOpen] = useState(false);
+  const [highlightedIndex, setHighlightedIndex] = useState(-1);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [regError, setRegError] = useState<string | null>(null);
+  const [regSuccess, setRegSuccess] = useState<string | null>(null);
+
+  const dropdownRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
 
   const fetchTeamDetails = async () => {
     if (!user?.teamId) return;
@@ -40,24 +59,145 @@ export const TeamPage: React.FC = () => {
     fetchTeamDetails();
   }, [user?.teamId]);
 
+  // Debounced Autocomplete Query
+  useEffect(() => {
+    if (!user || user.teamId) return;
+
+    const timer = setTimeout(async () => {
+      try {
+        setIsSearching(true);
+        const res = await api.get<string[]>(`/teams/autocomplete?q=${encodeURIComponent(squadQuery)}`);
+        setSuggestions(Array.isArray(res) ? res : []);
+        setHighlightedIndex(-1);
+      } catch {
+        setSuggestions([]);
+      } finally {
+        setIsSearching(false);
+      }
+    }, 180);
+
+    return () => clearTimeout(timer);
+  }, [squadQuery, user?.teamId]);
+
+  // Close dropdown on outside click
+  useEffect(() => {
+    const handleOutsideClick = (e: MouseEvent) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
+        setIsDropdownOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleOutsideClick);
+    return () => document.removeEventListener('mousedown', handleOutsideClick);
+  }, []);
+
+  const handleSelectSquad = (name: string) => {
+    setSelectedSquad(name);
+    setSquadQuery(name);
+    setIsDropdownOpen(false);
+    setRegError(null);
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (!isDropdownOpen || suggestions.length === 0) {
+      if (e.key === 'ArrowDown') {
+        setIsDropdownOpen(true);
+      }
+      return;
+    }
+
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      setHighlightedIndex((prev) => (prev < suggestions.length - 1 ? prev + 1 : 0));
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      setHighlightedIndex((prev) => (prev > 0 ? prev - 1 : suggestions.length - 1));
+    } else if (e.key === 'Enter') {
+      e.preventDefault();
+      if (highlightedIndex >= 0 && highlightedIndex < suggestions.length) {
+        handleSelectSquad(suggestions[highlightedIndex]);
+      } else if (suggestions.length > 0) {
+        handleSelectSquad(suggestions[0]);
+      }
+    } else if (e.key === 'Escape') {
+      setIsDropdownOpen(false);
+    }
+  };
+
+  const handleRegisterSquad = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setRegError(null);
+    setRegSuccess(null);
+
+    const squadToSubmit = selectedSquad.trim() || squadQuery.trim();
+    if (!squadToSubmit) {
+      setRegError('Please select your registered competition squad.');
+      inputRef.current?.focus();
+      return;
+    }
+
+    if (!registeredEmail.trim()) {
+      setRegError('Registered competition email address is required.');
+      return;
+    }
+
+    setIsSubmitting(true);
+    try {
+      const res = await api.post('/teams/register', {
+        teamName: squadToSubmit,
+        registeredEmail: registeredEmail.trim(),
+      });
+
+      setRegSuccess(res?.message || `Successfully joined ${squadToSubmit}.`);
+
+      // Refresh session context to transition user to squad operations view
+      await refreshSession();
+    } catch (err: any) {
+      const code = err?.code;
+      if (code === 'EMAIL_VERIFICATION_REQUIRED') {
+        setRegError(
+          'The registered competition email must match your signed-in identity. Direct linking of a different email is not permitted. Please sign in with your registered competition email or contact event administrators for assistance.'
+        );
+      } else if (code === 'EMAIL_NOT_IN_TEAM') {
+        setRegError(
+          'Roster mismatch: The entered email address is registered under a different squad on the competition roster.'
+        );
+      } else if (code === 'NOT_ON_ROSTER') {
+        setRegError(
+          'The entered email address was not found on the official competition roster.'
+        );
+      } else if (code === 'ALREADY_ASSIGNED' || code === 'ALREADY_IN_TEAM') {
+        setRegError('Your account is already assigned to a squad. Changing squads is not permitted.');
+      } else if (code === 'TEAM_NOT_FOUND') {
+        setRegError(
+          'The selected squad name was not found on the approved roster. Please select from the suggestions.'
+        );
+      } else if (code === 'COMPETITION_LOCKED') {
+        setRegError('Team registrations are currently closed.');
+      } else if (code === 'AMBIGUOUS_ROSTER_MATCH') {
+        setRegError(
+          'Multiple roster records were found for this email address. Please contact event administrators.'
+        );
+      } else {
+        setRegError(err?.message || 'Failed to complete squad registration. Please try again.');
+      }
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
   return (
     <div className="max-w-5xl mx-auto px-4 sm:px-6 py-8 space-y-6">
-      {/* Clean Architectural Eyebrow & Header */}
-      <div className="space-y-3 pb-3 border-b-2 border-black">
-        <div className="flex items-center justify-between text-xs font-mono uppercase tracking-wider">
-          <div className="flex items-center gap-2 text-slate-400 font-bold">
-            <span className="text-[#ffd000] font-black">§ 03</span>
-            <span className="text-slate-600">&bull;</span>
-            <span className="text-white">SQUAD OPERATIONS</span>
-          </div>
-          <span className="spec-tag spec-tag-dark">ROSTER SPEC</span>
+      {/* Page Header */}
+      <div className="space-y-2 pb-4 border-b-2 border-black">
+        <div className="flex items-center gap-2 text-xs font-mono uppercase tracking-wider text-slate-400 font-bold">
+          <span className="text-[#ffd000] font-black">SECTION 03</span>
+          <span className="text-slate-600">•</span>
+          <span className="text-white">SQUAD OPERATIONS</span>
         </div>
 
-        <div className="flex flex-col sm:flex-row sm:items-baseline justify-between gap-3">
-          <h1 className="text-3xl sm:text-4xl font-black font-display tracking-tight text-white uppercase">
-            Squad Operations
-          </h1>
-        </div>
+        <h1 className="text-3xl sm:text-4xl font-black font-display tracking-tight text-white uppercase">
+          Squad Operations
+        </h1>
 
         <p className="text-sm text-slate-400 max-w-2xl leading-relaxed font-sans">
           Monitor your squad membership, competition track parameters, and synchronized attempt status for the Loventia sprint.
@@ -71,82 +211,209 @@ export const TeamPage: React.FC = () => {
         </div>
       )}
 
-      {/* Case 1: Participant has NO team */}
-      {!user?.teamId ? (
-        <div className="space-y-6">
-          <div className="rulebook-card p-6 sm:p-8 space-y-6">
-            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 pb-6 border-b-2 border-black">
-              <div className="flex items-center gap-4">
-                <div className="w-12 h-12 bg-[#ffd000] text-black border-2 border-black shadow-[3px_3px_0px_#000] flex items-center justify-center shrink-0">
-                  <Users className="w-6 h-6 stroke-[2.5]" />
-                </div>
-                <div>
-                  <div className="flex items-center gap-2">
-                    <h2 className="text-xl sm:text-2xl font-black font-display text-white uppercase tracking-tight">
-                      No Squad Assigned
-                    </h2>
-                    <span className="spec-tag spec-tag-accent text-[10px]">UNLINKED</span>
-                  </div>
-                  <p className="text-xs text-slate-400 font-sans mt-0.5">
-                    Your account is currently registered as an independent operative.
-                  </p>
-                </div>
-              </div>
+      {/* State 0: Unauthenticated Visitor */}
+      {!user ? (
+        <div className="rulebook-card p-6 sm:p-8 space-y-6">
+          <div className="flex items-center gap-4 pb-6 border-b-2 border-black">
+            <div className="w-12 h-12 bg-amber-400 text-black border-2 border-black shadow-[3px_3px_0px_#000] flex items-center justify-center shrink-0">
+              <Lock className="w-6 h-6 stroke-[2.5]" />
             </div>
-
-            {/* 3-Step Setup Blueprint */}
-            <div className="space-y-3">
-              <span className="text-xs font-mono font-bold uppercase tracking-wider text-slate-400 block">
-                How Squad Sync Works:
-              </span>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <div className="p-4 bg-[#141a27] border-2 border-black shadow-[2px_2px_0px_#000] space-y-1.5">
-                  <div className="flex items-center justify-between">
-                    <span className="text-[10px] font-mono font-black text-[#ffd000]">STEP 01</span>
-                    <Users className="w-3.5 h-3.5 text-slate-400" />
-                  </div>
-                  <h3 className="font-bold text-white text-sm">Join or Form Squad</h3>
-                  <p className="text-xs text-slate-400 leading-relaxed font-sans">
-                    Log in to the central FOSS Club portal to create your team and invite squad members.
-                  </p>
-                </div>
-
-                <div className="p-4 bg-[#141a27] border-2 border-black shadow-[2px_2px_0px_#000] space-y-1.5">
-                  <div className="flex items-center justify-between">
-                    <span className="text-[10px] font-mono font-black text-[#00f0ff]">STEP 02</span>
-                    <Shield className="w-3.5 h-3.5 text-slate-400" />
-                  </div>
-                  <h3 className="font-bold text-white text-sm">Sign In to CTF</h3>
-                  <p className="text-xs text-slate-400 leading-relaxed font-sans">
-                    Use your same FOSS Club account credentials. FOSS CTF automatically resolves your squad context.
-                  </p>
-                </div>
-
-                <div className="p-4 bg-[#141a27] border-2 border-black shadow-[2px_2px_0px_#000] space-y-1.5">
-                  <div className="flex items-center justify-between">
-                    <span className="text-[10px] font-mono font-black text-emerald-400">STEP 03</span>
-                    <Zap className="w-3.5 h-3.5 text-slate-400" />
-                  </div>
-                  <h3 className="font-bold text-white text-sm">Compete & Score</h3>
-                  <p className="text-xs text-slate-400 leading-relaxed font-sans">
-                    Flag captures submit under your squad's name, syncing solve times with the synchronized speed ledger.
-                  </p>
-                </div>
-              </div>
-            </div>
-
-            {/* Operative Note */}
-            <div className="p-4 bg-[#141a27] border-2 border-black text-xs text-slate-300 font-sans flex items-start gap-3">
-              <HelpCircle className="w-4 h-4 text-[#ffd000] shrink-0 mt-0.5" />
-              <p className="leading-relaxed">
-                <strong className="text-white">Note for solo participants:</strong> You can still explore challenges and verify flag payloads locally. To appear on the official verified speed podium, an active squad affiliation is required.
+            <div>
+              <h2 className="text-xl sm:text-2xl font-black font-display text-white uppercase tracking-tight">
+                Authentication Required
+              </h2>
+              <p className="text-xs text-slate-400 font-sans mt-0.5">
+                Sign in through FOSS Club OIDC to view or join your competition squad.
               </p>
             </div>
           </div>
+
+          <a
+            href={getLoginUrl()}
+            className="inline-flex items-center gap-2 px-5 py-2.5 bg-emerald-400 hover:bg-emerald-300 text-black border-2 border-black font-mono font-black text-xs uppercase tracking-wider shadow-[3px_3px_0px_#000] hover:translate-x-[-1px] hover:translate-y-[-1px] hover:shadow-[4px_4px_0px_#000] transition-all"
+          >
+            <span>SIGN IN WITH FOSS CLUB</span>
+            <ChevronRight className="w-4 h-4 stroke-[3]" />
+          </a>
+        </div>
+      ) : !user.teamId ? (
+        /* State B: User has NO team -> Join Your Registered Squad Form */
+        <div className="space-y-6">
+          <div className="rulebook-card p-6 sm:p-8 space-y-6">
+            <div className="pb-6 border-b-2 border-black space-y-2">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 bg-[#ffd000] text-black border-2 border-black shadow-[2px_2px_0px_#000] flex items-center justify-center shrink-0">
+                  <Users className="w-5 h-5 stroke-[2.5]" />
+                </div>
+                <h2 className="text-xl sm:text-2xl font-black font-display text-white uppercase tracking-tight">
+                  Join Your Registered Squad
+                </h2>
+              </div>
+              <p className="text-xs sm:text-sm text-slate-300 font-sans leading-relaxed pt-1">
+                Your sign-in email did not automatically match a competition registration. Enter the exact squad name and the email address you used when registering for this competition. Both details must match the official competition roster.
+              </p>
+            </div>
+
+            {/* State C: Validation or Verification Error Banner */}
+            {regError && (
+              <div className="border-2 border-black bg-[#ff3366] text-white p-4 font-mono text-xs font-bold flex items-start gap-2.5 shadow-[3px_3px_0px_#000]">
+                <AlertCircle className="w-4 h-4 shrink-0 stroke-[2.5] mt-0.5" />
+                <span className="leading-relaxed">{regError}</span>
+              </div>
+            )}
+
+            {regSuccess && (
+              <div className="border-2 border-black bg-emerald-500 text-black p-4 font-mono text-xs font-black flex items-center gap-2 shadow-[3px_3px_0px_#000]">
+                <CheckCircle2 className="w-4 h-4 shrink-0 stroke-[3]" />
+                <span>{regSuccess}</span>
+              </div>
+            )}
+
+            {/* Registration Form */}
+            <form onSubmit={handleRegisterSquad} className="space-y-5">
+              {/* Squad Name Autocomplete */}
+              <div className="space-y-1.5 relative" ref={dropdownRef}>
+                <label
+                  htmlFor="squad-name-input"
+                  className="block text-xs font-mono font-bold text-slate-200 uppercase tracking-wider"
+                >
+                  Squad Name <span className="text-[#ffd000]">*</span>
+                </label>
+                <div className="relative">
+                  <input
+                    id="squad-name-input"
+                    ref={inputRef}
+                    type="text"
+                    value={squadQuery}
+                    onChange={(e) => {
+                      setSquadQuery(e.target.value);
+                      setSelectedSquad('');
+                      setIsDropdownOpen(true);
+                      setRegError(null);
+                    }}
+                    onFocus={() => setIsDropdownOpen(true)}
+                    onKeyDown={handleKeyDown}
+                    placeholder="Select your registered squad..."
+                    autoComplete="off"
+                    disabled={isSubmitting}
+                    className="w-full bg-[#121724] border-2 border-black p-3 text-xs sm:text-sm font-mono text-white placeholder-slate-500 shadow-[2px_2px_0px_#000] focus:outline-none focus:border-[#ffd000] transition-colors"
+                  />
+                  <div className="absolute right-3 top-3 text-slate-500 pointer-events-none">
+                    <Search className="w-4 h-4" />
+                  </div>
+                </div>
+
+                <p className="text-[11px] text-slate-400 font-sans">
+                  Select your registered competition squad from the official roster.
+                </p>
+
+                {/* Autocomplete Dropdown */}
+                {isDropdownOpen && (
+                  <div className="absolute z-30 left-0 right-0 mt-1 bg-[#161d2d] border-2 border-black shadow-[4px_4px_0px_#000] max-h-60 overflow-y-auto divide-y divide-black/50">
+                    {isSearching ? (
+                      <div className="p-3 text-xs font-mono text-slate-400 flex items-center gap-2">
+                        <span className="w-2 h-2 bg-[#ffd000] animate-pulse" />
+                        <span>Searching roster...</span>
+                      </div>
+                    ) : suggestions.length === 0 ? (
+                      <div className="p-3 text-xs font-mono text-slate-400">
+                        No squads matching "{squadQuery}". Ensure exact spelling.
+                      </div>
+                    ) : (
+                      suggestions.map((name, idx) => (
+                        <button
+                          key={name}
+                          type="button"
+                          onClick={() => handleSelectSquad(name)}
+                          className={`w-full text-left px-4 py-2.5 text-xs sm:text-sm font-mono font-bold flex items-center justify-between transition-colors ${
+                            idx === highlightedIndex || selectedSquad === name
+                              ? 'bg-[#ffd000] text-black'
+                              : 'text-slate-200 hover:bg-[#1f283d] hover:text-white'
+                          }`}
+                        >
+                          <span>{name}</span>
+                          {selectedSquad === name && (
+                            <Check className="w-3.5 h-3.5 stroke-[3]" />
+                          )}
+                        </button>
+                      ))
+                    )}
+                  </div>
+                )}
+              </div>
+
+              {/* Registered Competition Email */}
+              <div className="space-y-1.5">
+                <label
+                  htmlFor="registered-email-input"
+                  className="block text-xs font-mono font-bold text-slate-200 uppercase tracking-wider"
+                >
+                  Registered Competition Email <span className="text-[#ffd000]">*</span>
+                </label>
+                <div className="relative">
+                  <input
+                    id="registered-email-input"
+                    type="email"
+                    value={registeredEmail}
+                    onChange={(e) => {
+                      setRegisteredEmail(e.target.value);
+                      setRegError(null);
+                    }}
+                    placeholder="Email used during competition registration"
+                    autoComplete="email"
+                    disabled={isSubmitting}
+                    className="w-full bg-[#121724] border-2 border-black p-3 text-xs sm:text-sm font-mono text-white placeholder-slate-500 shadow-[2px_2px_0px_#000] focus:outline-none focus:border-[#ffd000] transition-colors"
+                  />
+                  <div className="absolute right-3 top-3 text-slate-500 pointer-events-none">
+                    <Mail className="w-4 h-4" />
+                  </div>
+                </div>
+                <p className="text-[11px] text-slate-400 font-sans leading-relaxed">
+                  This must be the email address submitted in your official competition registration form.
+                </p>
+              </div>
+
+              {/* State D: Submit Button with Loading State */}
+              <div className="pt-2 flex flex-col sm:flex-row items-center gap-3">
+                <button
+                  type="submit"
+                  disabled={isSubmitting}
+                  className="w-full sm:w-auto px-6 py-3 bg-[#ffd000] hover:bg-[#ffdb33] disabled:bg-amber-600/70 text-black border-2 border-black font-mono font-black text-xs sm:text-sm uppercase tracking-wider shadow-[3px_3px_0px_#000] hover:translate-x-[-1px] hover:translate-y-[-1px] hover:shadow-[4px_4px_0px_#000] active:translate-x-[1px] active:translate-y-[1px] active:shadow-none transition-all flex items-center justify-center gap-2"
+                >
+                  {isSubmitting ? (
+                    <>
+                      <span className="w-2 h-2 bg-black animate-ping" />
+                      <span>VERIFYING ROSTER...</span>
+                    </>
+                  ) : (
+                    <>
+                      <span>Verify &amp; Join Squad</span>
+                      <ChevronRight className="w-4 h-4 stroke-[3]" />
+                    </>
+                  )}
+                </button>
+
+                <span className="text-[11px] font-mono text-slate-500 text-center sm:text-left">
+                  Squad assignment is permanent once confirmed.
+                </span>
+              </div>
+            </form>
+          </div>
         </div>
       ) : (
-        /* Case 2: Participant HAS an assigned team */
+        /* State A: Participant HAS a team */
         <div className="space-y-6">
+          {/* Confirmed & Permanent Status Indicator */}
+          <div className="p-3 bg-[#141a27] border-2 border-black shadow-[2px_2px_0px_#000] flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs font-mono">
+            <div className="flex items-center gap-2 text-slate-300">
+              <ShieldCheck className="w-4 h-4 text-emerald-400" />
+              <span className="text-white font-bold">Squad Assignment Confirmed</span>
+            </div>
+            <span className="text-[10px] uppercase font-bold text-slate-400">
+              MEMBERSHIP PERMANENT &amp; LOCKED
+            </span>
+          </div>
+
           {/* Squad Metrics Row */}
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
             <div className="rulebook-card p-5 space-y-2">

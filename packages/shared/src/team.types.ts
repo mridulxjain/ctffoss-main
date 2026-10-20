@@ -49,3 +49,8 @@ export interface AdminTeamListItemDTO {
 export interface UpdateTeamValenfindMappingRequest {
   valenfindTeamId: string | null;
 }
+
+export interface RegisterTeamRequest {
+  teamName: string;
+  registeredEmail?: string;
+}

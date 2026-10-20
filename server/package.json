@@ -5,7 +5,8 @@
   "main": "dist/index.js",
   "scripts": {
     "dev": "tsx watch src/index.ts",
-    "test": "NODE_ENV=test tsx --test test/competition.test.ts test/oidc.test.ts test/reliability.test.ts test/devRoster.test.ts test/serverless.test.ts",
+    "test": "NODE_ENV=test tsx --test test/teamRegistration.test.ts test/oidc.test.ts test/devRoster.test.ts test/serverless.test.ts",
+    "test:all": "NODE_ENV=test tsx --test test/teamRegistration.test.ts test/competition.test.ts test/oidc.test.ts test/reliability.test.ts test/devRoster.test.ts test/serverless.test.ts",
     "build": "npm run db:generate && tsc",
     "start": "node dist/index.js",
     "db:generate": "prisma generate",
@@ -14,7 +15,8 @@
     "db:migrate:check": "tsx src/scripts/validateMigrationIsolation.ts",
     "db:migrate:deploy": "tsx src/scripts/validateMigrationIsolation.ts && prisma migrate deploy",
     "db:seed": "tsx prisma/seed.ts",
-    "db:seed:dev": "tsx src/scripts/seedDevRoster.ts"
+    "db:seed:dev": "tsx src/scripts/seedDevRoster.ts",
+    "db:import-roster": "tsx src/scripts/importRoster.ts"
   },
 
   "dependencies": {

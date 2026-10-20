@@ -19,9 +19,6 @@ import {
   Send,
   Lock,
   AlertTriangle,
-  FileText,
-  Activity,
-  Crosshair,
   Trophy,
   ArrowRight,
 } from 'lucide-react';
@@ -458,72 +455,7 @@ export const ChallengesPage: React.FC = () => {
         </div>
       </section>
 
-      {/* INTEL & RECON DIRECTIVES GRID */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
-        {/* Card 1: Mission Brief */}
-        <div className="border-2 border-black bg-zinc-950 p-5 space-y-3 shadow-[3px_3px_0px_#000] hover:translate-x-[-1px] hover:translate-y-[-1px] transition-all">
-          <div className="flex items-center gap-1.5 text-[11px] font-mono font-black text-emerald-400 uppercase tracking-wider">
-            <FileText className="w-3.5 h-3.5" />
-            <span>Mission Brief</span>
-          </div>
-          <h2 className="font-mono text-sm font-black text-zinc-100 uppercase">
-            Discount Voucher Forgery
-          </h2>
-          <p className="text-xs font-mono text-zinc-400 leading-relaxed">
-            Loventia runs an automated voucher validation endpoint. A hidden VIP voucher unlocks 100% discount on order totals.
-            Reverse the voucher verification algorithm to mint an unauthorized token.
-          </p>
-        </div>
 
-        {/* Card 2: Squad Telemetry */}
-        <div className="border-2 border-black bg-zinc-950 p-5 space-y-3 shadow-[3px_3px_0px_#000] hover:translate-x-[-1px] hover:translate-y-[-1px] transition-all">
-          <div className="flex items-center gap-1.5 text-[11px] font-mono font-black text-amber-400 uppercase tracking-wider">
-            <Activity className="w-3.5 h-3.5" />
-            <span>Squad Telemetry</span>
-          </div>
-          <h2 className="font-mono text-sm font-black text-zinc-100 uppercase truncate">
-            {team ? team.name : 'Unassigned Operative'}
-          </h2>
-          <div className="space-y-1.5 text-xs font-mono text-zinc-400">
-            <div>
-              <span className="text-zinc-500 font-bold">Ranking:</span>{' '}
-              <strong className="text-emerald-400">Pure Speed / Time</strong>
-            </div>
-            <div className="flex items-center gap-1.5">
-              <span className="text-zinc-500 font-bold">Solve Status:</span>{' '}
-              {isSolved ? (
-                <span className="inline-flex items-center gap-1 text-emerald-400 font-black">
-                  <CheckCircle2 className="w-3.5 h-3.5 stroke-[2.5]" />
-                  <span>SOLVED</span>
-                </span>
-              ) : (
-                <span className="text-amber-400 font-bold">In Progress</span>
-              )}
-            </div>
-            <div>
-              <span className="text-zinc-500 font-bold">Flag Pattern:</span>{' '}
-              <span className="text-zinc-300 font-bold">FOSSCTF{'{...}'}</span>
-            </div>
-          </div>
-        </div>
-
-        {/* Card 3: Attack Playbook */}
-        <div className="border-2 border-black bg-zinc-950 p-5 space-y-3 shadow-[3px_3px_0px_#000] hover:translate-x-[-1px] hover:translate-y-[-1px] transition-all">
-          <div className="flex items-center gap-1.5 text-[11px] font-mono font-black text-cyan-400 uppercase tracking-wider">
-            <Crosshair className="w-3.5 h-3.5" />
-            <span>Attack Playbook</span>
-          </div>
-          <h2 className="font-mono text-sm font-black text-zinc-100 uppercase">
-            Execution Steps
-          </h2>
-          <ol className="text-xs font-mono text-zinc-400 space-y-1 list-decimal list-inside">
-            <li>Access the target site once the competition starts</li>
-            <li>Intercept the <code className="text-emerald-400 font-bold">/api/vouchers</code> payload</li>
-            <li>Forge the 100% discount VIP token</li>
-            <li>Checkout secret admin item & retrieve flag</li>
-          </ol>
-        </div>
-      </div>
 
       {/* UNIQUE, NEOBRUTAL, FUNKY FLAG SUBMISSION CONSOLE */}
       <section className="border-3 border-black bg-zinc-950 p-6 sm:p-7 shadow-[6px_6px_0px_#000] space-y-5 relative overflow-hidden">

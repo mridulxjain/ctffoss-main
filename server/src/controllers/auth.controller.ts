@@ -4,6 +4,7 @@ import { dbService } from '../services/db.service';
 import { signToken } from '../utils/crypto';
 import { config } from '../config/index';
 import { oidcService } from '../services/oidc.service';
+import { rosterService } from '../services/roster.service';
 import { DEV_TEAMS, DEV_PARTICIPANTS, DEV_ADMIN, LEGACY_TEST_ACCOUNTS } from '../fixtures/devRoster';
 
 function isProductionEnv(): boolean {
@@ -29,6 +30,14 @@ function getSessionCookieOptions(maxAge?: number) {
     path: '/',
     ...(maxAge ? { maxAge } : {}),
   };
+}
+
+export function setSessionCookie(res: Response, token: string, maxAge: number = 7 * 24 * 60 * 60 * 1000): void {
+  const sessionCookieName = getSessionCookieName();
+  res.cookie(sessionCookieName, token, getSessionCookieOptions(maxAge));
+  if (sessionCookieName !== 'foss_session') {
+    res.cookie('foss_session', token, getSessionCookieOptions(maxAge));
+  }
 }
 
 function getOidcTxCookieOptions(maxAge: number = 15 * 60 * 1000) {
@@ -283,8 +292,36 @@ export const authController = {
         });
       }
 
+      // Step 2: Automatic Team Matching via Approved Roster
+      // Security Requirement: Require trusted email_verified === true and ensure no UserInfo sub mismatch.
+      // Do not treat missing or false email_verified claim as verified.
+      if (!user.teamId && claims.email && claims.email_verified === true && !claims.userinfoSubMismatch) {
+        try {
+          const rosterMatch = await rosterService.findTeamForEmail(claims.email);
+          if (rosterMatch.status === 'MATCH' && rosterMatch.team) {
+            const dbTeam = await dbService.getTeamByName(rosterMatch.team.teamName);
+            if (dbTeam) {
+              user = await dbService.assignUserToTeam(user.id, dbTeam.id);
+              console.log(
+                `✅ [OIDC_CALLBACK:AUTO_TEAM_ASSIGN] Assigned user ${user.id} to team "${dbTeam.name}" (${dbTeam.id})`
+              );
+            } else {
+              console.warn(
+                `⚠️  [OIDC_CALLBACK:MISSING_TEAM_IN_DB] Approved roster matched team "${rosterMatch.team.teamName}" for user ${user.id}, but team is not initialized in database.`
+              );
+            }
+          } else if (rosterMatch.status === 'AMBIGUOUS') {
+            console.warn(
+              `⚠️  [OIDC_CALLBACK:AMBIGUOUS_ROSTER] Ambiguous roster match for user ${user.id}: ${rosterMatch.message}`
+            );
+          }
+        } catch (autoErr: any) {
+          console.error(`❌ [OIDC_CALLBACK:AUTO_TEAM_ERROR] Failed during automatic team matching: ${autoErr.message}`);
+        }
+      }
+
       const dbLookupMs = Date.now() - dbLookupStart;
-      console.log(`⏱️  [OIDC_CALLBACK:DB] duration=${dbLookupMs}ms userResolved=true role=${user.role}`);
+      console.log(`⏱️  [OIDC_CALLBACK:DB] duration=${dbLookupMs}ms userResolved=true role=${user.role} hasTeam=${!!user.teamId}`);
 
       const finalClubRole = user.role;
 
