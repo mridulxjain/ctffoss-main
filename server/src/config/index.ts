@@ -18,44 +18,49 @@ export const config = {
   databaseUrl: process.env.DATABASE_URL || 'postgresql://postgres:postgres@localhost:5432/fossctf?schema=ctf',
   directUrl: process.env.DIRECT_URL || process.env.DATABASE_URL || 'postgresql://postgres:postgres@localhost:5432/fossctf?schema=ctf',
   storageDriver: (process.env.STORAGE_DRIVER as 'postgres' | 'memory' | undefined) || null,
-  frontendUrl: process.env.FRONTEND_URL || 'http://localhost:5173',
+  frontendUrl: (process.env.FRONTEND_URL || 'http://localhost:5173').trim().replace(/^['"]|['"]$/g, ''),
   corsOrigins: parsedCorsOrigins,
   cookieSameSite: ((process.env.COOKIE_SAME_SITE as 'lax' | 'none' | 'strict') || 'lax') as 'lax' | 'none' | 'strict',
   trustProxy: process.env.TRUST_PROXY
     ? (!isNaN(Number(process.env.TRUST_PROXY)) ? Number(process.env.TRUST_PROXY) : process.env.TRUST_PROXY)
     : ((process.env.NODE_ENV || 'development') === 'production' ? 1 : false),
-  valenfindUrl: process.env.VALENFIND_URL || 'https://ctffoss.vercel.app',
-  valenfindChallengeUrl:
+  valenfindUrl: (process.env.VALENFIND_URL || 'https://ctffoss.vercel.app').trim().replace(/^['"]|['"]$/g, ''),
+  valenfindChallengeUrl: (
     process.env.LOVENTIA_CHALLENGE_URL ||
     process.env.VALENFIND_CHALLENGE_URL ||
-    'https://ctffoss.vercel.app',
-  loventiaChallengeUrl:
+    'https://ctffoss.vercel.app'
+  ).trim().replace(/^['"]|['"]$/g, ''),
+  loventiaChallengeUrl: (
     process.env.LOVENTIA_CHALLENGE_URL ||
     process.env.VALENFIND_CHALLENGE_URL ||
-    'https://ctffoss.vercel.app',
-  valenfindVerifySecret:
+    'https://ctffoss.vercel.app'
+  ).trim().replace(/^['"]|['"]$/g, ''),
+  valenfindVerifySecret: (
     process.env.LOVENTIA_VERIFY_KEY ||
     process.env.LOVENTIA_VERIFY_SECRET ||
     process.env.VALENFIND_VERIFY_SECRET ||
-    'foss-ctf-internal-verification-secret',
-  loventiaVoucherId:
+    'foss-ctf-internal-verification-secret'
+  ).trim().replace(/^['"]|['"]$/g, ''),
+  loventiaVoucherId: (
     process.env.LOVENTIA_VOUCHER_ID ||
     (process.env.NODE_ENV === 'test'
       ? 'TEST-VOUCHER-2026'
-      : (process.env.NODE_ENV !== 'production' ? 'LOVENTIA-DEV-VOUCHER' : '')),
-  loventiaPassphrase:
+      : (process.env.NODE_ENV !== 'production' ? 'LOVENTIA-DEV-VOUCHER' : ''))
+  ).trim().replace(/^['"]|['"]$/g, ''),
+  loventiaPassphrase: (
     process.env.LOVENTIA_PASSPHRASE ||
     (process.env.NODE_ENV === 'test'
       ? 'test_passphrase_123'
-      : (process.env.NODE_ENV !== 'production' ? 'dev_passphrase_123' : '')),
-  oidcIssuer: process.env.OIDC_ISSUER_URL || process.env.OIDC_ISSUER || 'https://oidc.fossclub.tech',
-  oidcClientId: process.env.OIDC_CLIENT_ID || 'ctf',
-  oidcClientSecret: process.env.OIDC_CLIENT_SECRET || '',
+      : (process.env.NODE_ENV !== 'production' ? 'dev_passphrase_123' : ''))
+  ).trim().replace(/^['"]|['"]$/g, ''),
+  oidcIssuer: (process.env.OIDC_ISSUER_URL || process.env.OIDC_ISSUER || 'https://oidc.fossclub.tech').trim().replace(/^['"]|['"]$/g, ''),
+  oidcClientId: (process.env.OIDC_CLIENT_ID || 'ctf').trim().replace(/^['"]|['"]$/g, ''),
+  oidcClientSecret: (process.env.OIDC_CLIENT_SECRET || '').trim().replace(/^['"]|['"]$/g, ''),
   oidcRedirectUri:
-    process.env.OIDC_REDIRECT_URI || 'http://localhost:4000/api/v1/auth/callback',
+    (process.env.OIDC_REDIRECT_URI || 'http://localhost:4000/api/v1/auth/callback').trim().replace(/^['"]|['"]$/g, ''),
   oidcPostLogoutRedirectUri:
-    process.env.OIDC_POST_LOGOUT_REDIRECT_URI || 'http://localhost:5173',
-  oidcScopes: process.env.OIDC_SCOPES || 'openid profile email club',
+    (process.env.OIDC_POST_LOGOUT_REDIRECT_URI || 'http://localhost:5173').trim().replace(/^['"]|['"]$/g, ''),
+  oidcScopes: (process.env.OIDC_SCOPES || 'openid profile email club').trim().replace(/^['"]|['"]$/g, ''),
 };
 
 export const DEV_DEFAULT_SECRETS = {

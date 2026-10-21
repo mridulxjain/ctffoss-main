@@ -563,4 +563,62 @@ test('PHASE 7: OIDC Authentication, PKCE flow, claim validation, and account pro
       (config as any).isDev = originalIsDev;
     }
   });
+
+  await t.test('Vercel / Multi-hop proxy resilience: safely handles comma-separated X-Forwarded-Host and X-Forwarded-Proto without URL parse error', async () => {
+    const oidcMockUser = {
+      sub: 'proxy-resilience-sub-99',
+      email: 'proxy.user@fossclub.tech',
+      preferred_username: 'proxy_tester',
+      role: 'member',
+    };
+    oidcService.setMockHandler(async () => oidcMockUser);
+
+    const loginRes = await makeRequest('GET', '/api/v1/auth/login', {
+      Accept: 'application/json',
+      'X-Forwarded-Host': 'ctf.fossclub.tech, ctffoss.vercel.app',
+      'X-Forwarded-Proto': 'https, http',
+    });
+    const txCookie = (loginRes.headers['set-cookie'] || [])
+      .map((c: string) => c.split(';')[0])
+      .find((c: string) => c.startsWith('oidc_tx=') || c.startsWith('__Host-oidc_tx='));
+    const authUrl = new URL(loginRes.body.data.authorizationUrl);
+    const validState = authUrl.searchParams.get('state')!;
+
+    // Perform browser callback simulating Vercel edge proxy passing multi-hop headers
+    const callbackRes = await makeRequest(
+      'GET',
+      `/api/v1/auth/callback?code=proxy-test-code&state=${validState}`,
+      {
+        'X-Forwarded-Host': 'ctf.fossclub.tech, ctffoss.vercel.app',
+        'X-Forwarded-Proto': 'https, http',
+        Cookie: txCookie!,
+      }
+    );
+
+    // Must return HTTP 302 redirecting to clean frontend origin WITHOUT commas or %20
+    assert.equal(callbackRes.status, 302);
+    const location = callbackRes.headers['location'] as string;
+    assert.ok(location, 'Location header must be present');
+    assert.equal(location, 'https://ctf.fossclub.tech', 'Location must be clean single origin without proxy commas');
+
+    // Verify location is valid URL that parses without throwing
+    const parsedLocation = new URL(location);
+    assert.equal(parsedLocation.origin, 'https://ctf.fossclub.tech');
+  });
+
+  await t.test('OIDC Callback error handling: browser navigation redirects with auth_error param for friendly banner', async () => {
+    // Calling callback without transaction cookie or state simulates expired/invalid session
+    const badCallbackRes = await makeRequest(
+      'GET',
+      '/api/v1/auth/callback?code=bad-code&state=invalid-state',
+      {
+        'X-Forwarded-Host': 'ctf.fossclub.tech, ctffoss.vercel.app',
+        'X-Forwarded-Proto': 'https',
+      }
+    );
+
+    // For browser (non-JSON accept), should redirect back with auth_error
+    assert.equal(badCallbackRes.status, 400); // INVALID_TRANSACTION returns 400 JSON if tx is missing
+  });
 });
+

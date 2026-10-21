@@ -74,6 +74,58 @@ function parseOidcRoles(claims: { role?: any; roles?: any; groups?: any }): stri
   return extracted;
 }
 
+/**
+ * Safely extracts a clean, single host name without trailing ports or comma-separated proxy entries.
+ * Handles reverse proxy chains (Vercel Edge, Cloudflare, Campus NAT) where X-Forwarded-Host
+ * contains comma-separated values like "ctf.fossclub.tech, ctffoss.vercel.app".
+ */
+export function getSafeHost(req: Request): string {
+  // 1. Check req.hostname (populated by Express via trust proxy, strips port and comma-separated proxies)
+  if (req.hostname && typeof req.hostname === 'string' && req.hostname.trim()) {
+    const clean = req.hostname.trim();
+    if (!clean.includes(',') && !clean.includes(' ')) {
+      return clean;
+    }
+  }
+
+  // 2. Check X-Forwarded-Host (split by comma to extract client-facing host)
+  const forwardedHost = req.get('x-forwarded-host');
+  if (forwardedHost && typeof forwardedHost === 'string' && forwardedHost.trim()) {
+    const firstHost = forwardedHost.split(',')[0].trim().replace(/:\d+$/, '');
+    if (firstHost && !firstHost.includes(' ')) return firstHost;
+  }
+
+  // 3. Fallback to Host header
+  const host = req.get('host');
+  if (host && typeof host === 'string' && host.trim()) {
+    const firstHost = host.split(',')[0].trim().replace(/:\d+$/, '');
+    if (firstHost && !firstHost.includes(' ')) return firstHost;
+  }
+
+  return 'localhost:4000';
+}
+
+/**
+ * Safely extracts the client protocol (http or https).
+ * Prioritizes X-Forwarded-Proto to respect reverse proxy SSL termination.
+ */
+export function getSafeProtocol(req: Request): string {
+  // 1. Check X-Forwarded-Proto (populated by reverse proxy/load balancer)
+  const forwardedProto = req.get('x-forwarded-proto');
+  if (forwardedProto && typeof forwardedProto === 'string' && forwardedProto.trim()) {
+    const firstProto = forwardedProto.split(',')[0].trim().toLowerCase();
+    if (firstProto === 'http' || firstProto === 'https') return firstProto;
+  }
+
+  // 2. Check req.protocol (populated by Express via trust proxy)
+  if (req.protocol && typeof req.protocol === 'string' && req.protocol.trim()) {
+    const proto = req.protocol.split(',')[0].trim().toLowerCase();
+    if (proto === 'http' || proto === 'https') return proto;
+  }
+
+  return isProductionEnv() ? 'https' : 'http';
+}
+
 export const authController = {
   /**
    * Initiates OIDC Authorization Code Flow with PKCE S256.
@@ -174,15 +226,25 @@ export const authController = {
       // sent during token exchange matches the exact registered redirect_uri required by the OIDC provider,
       // preventing host mismatch issues when running behind Vercel serverless reverse proxy rewrites.
       let callbackUrl: URL;
+      const safeHost = getSafeHost(req);
+      const safeProto = getSafeProtocol(req);
+      const safeOrigin = `${safeProto}://${safeHost}`;
+
       try {
-        const baseRedirect = new URL(config.oidcRedirectUri);
-        const incomingUrl = new URL(req.originalUrl || req.url, 'http://localhost');
+        const rawOidcRedirect = (config.oidcRedirectUri || '').trim().replace(/^['"]|['"]$/g, '');
+        const baseRedirect = rawOidcRedirect.startsWith('http')
+          ? new URL(rawOidcRedirect)
+          : new URL(rawOidcRedirect || '/api/v1/auth/callback', safeOrigin);
+
+        const rawReqUrl = req.originalUrl || req.url || '';
+        const incomingUrl = new URL(rawReqUrl.startsWith('/') ? rawReqUrl : `/${rawReqUrl}`, 'http://localhost');
+
         callbackUrl = new URL(baseRedirect.pathname, baseRedirect.origin);
         callbackUrl.search = incomingUrl.search;
-      } catch {
-        const host = req.get('x-forwarded-host') || req.get('host') || 'localhost:4000';
-        const protocol = req.protocol || 'https';
-        callbackUrl = new URL(req.originalUrl || req.url, `${protocol}://${host}`);
+      } catch (urlErr: any) {
+        console.warn('⚠️  [OIDC_CALLBACK:URL_PARSE_FALLBACK]', urlErr?.message || urlErr);
+        const rawReqUrl = req.originalUrl || req.url || '/api/v1/auth/callback';
+        callbackUrl = new URL(rawReqUrl.startsWith('/') ? rawReqUrl : `/${rawReqUrl}`, safeOrigin);
       }
 
       const tokenExchangeStart = Date.now();
@@ -366,11 +428,41 @@ export const authController = {
       }
 
       // Redirect browser back to frontend; session is established strictly via HttpOnly cookie
-      const forwardHost = req.get('x-forwarded-host') || req.get('host');
-      const isTrustedHost = forwardHost && (forwardHost.includes('fossclub.tech') || forwardHost.includes('vercel.app'));
-      const targetFrontend = isTrustedHost ? `https://${forwardHost}` : config.frontendUrl;
-      console.log(`⏱️  [OIDC_CALLBACK:COMPLETE] totalDuration=${Date.now() - callbackStart}ms redirect=${targetFrontend}`);
-      res.redirect(targetFrontend);
+      // In local dev/test, strictly preserve config.frontendUrl with port (e.g. http://localhost:5173)
+      // In production, dynamically preserve whether the user authenticated via ctf.fossclub.tech or ctffoss.vercel.app
+      let targetFrontend = config.frontendUrl;
+
+      const rawForwardedHost = req.get('x-forwarded-host');
+      const firstForwardedHost = rawForwardedHost
+        ? rawForwardedHost.split(',')[0].trim().replace(/:\d+$/, '')
+        : null;
+
+      const hostToCheck = firstForwardedHost || req.hostname || '';
+      const isBackendHost =
+        hostToCheck.includes('backend') ||
+        hostToCheck.includes('-api') ||
+        hostToCheck.startsWith('api.');
+
+      const isCustomProdDomain =
+        !isBackendHost &&
+        (hostToCheck.includes('fossclub.tech') || hostToCheck.includes('vercel.app'));
+
+      if (isCustomProdDomain) {
+        const safeProto = getSafeProtocol(req);
+        targetFrontend = `${safeProto}://${hostToCheck}`;
+      }
+
+      // Final URL safety validation
+      let finalRedirectUrl: string;
+      try {
+        const parsedTarget = new URL(targetFrontend);
+        finalRedirectUrl = parsedTarget.origin;
+      } catch {
+        finalRedirectUrl = config.frontendUrl || '/';
+      }
+
+      console.log(`⏱️  [OIDC_CALLBACK:COMPLETE] totalDuration=${Date.now() - callbackStart}ms redirect=${finalRedirectUrl}`);
+      res.redirect(finalRedirectUrl);
     } catch (err: any) {
       const code = err.code || 'OIDC_CALLBACK_FAILED';
       const status =
@@ -378,13 +470,40 @@ export const authController = {
           ? 400
           : 500;
       console.error(`❌ [OIDC_CALLBACK:FAILED] totalDuration=${Date.now() - callbackStart}ms code=${code} status=${status} message=${err.message}`);
-      res.status(status).json({
-        success: false,
-        error: {
-          message: err.message || 'Failed to process OIDC authentication callback',
-          code,
-        },
-      });
+
+      if (req.headers.accept?.includes('application/json')) {
+        res.status(status).json({
+          success: false,
+          error: {
+            message: err.message || 'Failed to process OIDC authentication callback',
+            code,
+          },
+        });
+        return;
+      }
+
+      // For standard browser navigation, redirect with auth_error query parameter so Navbar displays friendly banner
+      const rawForwardedHost = req.get('x-forwarded-host');
+      const firstForwardedHost = rawForwardedHost
+        ? rawForwardedHost.split(',')[0].trim().replace(/:\d+$/, '')
+        : null;
+      const hostToCheck = firstForwardedHost || req.hostname || '';
+      const isBackendHost =
+        hostToCheck.includes('backend') ||
+        hostToCheck.includes('-api') ||
+        hostToCheck.startsWith('api.');
+
+      let errFrontend = config.frontendUrl;
+      if (!isBackendHost && (hostToCheck.includes('fossclub.tech') || hostToCheck.includes('vercel.app'))) {
+        errFrontend = `${getSafeProtocol(req)}://${hostToCheck}`;
+      }
+      try {
+        const errRedirect = new URL(errFrontend);
+        errRedirect.searchParams.set('auth_error', code);
+        res.redirect(errRedirect.toString());
+      } catch {
+        res.redirect(`${config.frontendUrl}/?auth_error=${encodeURIComponent(code)}`);
+      }
     }
   },
 
