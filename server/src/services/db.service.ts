@@ -3239,12 +3239,14 @@ export const dbService = {
           (att.completedAt
             ? Math.max(0, new Date(att.completedAt).getTime() - startToUse.getTime())
             : null);
+        const formatted = formatElapsedDuration(elapsed);
         return {
           teamId: t.teamId,
           teamName: t.teamName,
           status: 'COMPLETED' as TimedAttemptStatus,
           elapsedMs: elapsed,
-          formattedTime: formatElapsedDuration(elapsed),
+          formattedTime: formatted,
+          formattedDuration: formatted,
           startedAt: startToUse.toISOString(),
           completedAt: att.completedAt ? new Date(att.completedAt).toISOString() : null,
         };
@@ -3258,6 +3260,7 @@ export const dbService = {
           status: 'IN_PROGRESS' as TimedAttemptStatus,
           elapsedMs: null,
           formattedTime: null,
+          formattedDuration: null,
           startedAt: startToUse.toISOString(),
           completedAt: null,
         };
@@ -3269,6 +3272,7 @@ export const dbService = {
         status: 'NOT_STARTED' as TimedAttemptStatus,
         elapsedMs: null,
         formattedTime: null,
+        formattedDuration: null,
         startedAt: null,
         completedAt: null,
       };

@@ -85,6 +85,7 @@ export interface CompetitionLeaderboardEntryDTO {
   status: TimedAttemptStatus;
   elapsedMs: number | null;
   formattedTime: string | null;
+  formattedDuration?: string | null;
   startedAt: string | null;
   completedAt: string | null;
 }

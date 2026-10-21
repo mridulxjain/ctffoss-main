@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { api, ApiError } from '../lib/api';
-import type { CompetitionLeaderboardDTO } from '@fossctf/shared';
+import { formatElapsedDuration, type CompetitionLeaderboardDTO } from '@fossctf/shared';
 import { useAuth } from '../context/AuthContext';
 import {
   Timer,
@@ -164,7 +164,9 @@ export const CompetitionLeaderboardPage: React.FC = () => {
               </div>
               <div className="flex items-center justify-between border-t border-zinc-800 pt-2 font-mono text-xs">
                 <span className="text-zinc-500 font-medium">Record Time:</span>
-                <span className="font-bold text-slate-200">{top2.formattedDuration}</span>
+                <span className="font-bold text-slate-200">
+                  {top2.formattedDuration || top2.formattedTime || formatElapsedDuration(top2.elapsedMs) || '00:00'}
+                </span>
               </div>
             </div>
           ) : (
@@ -201,7 +203,7 @@ export const CompetitionLeaderboardPage: React.FC = () => {
                   <span>Record Time:</span>
                 </span>
                 <span className="px-2 py-0.5 bg-[#ffd000] text-black font-black border border-black shadow-[1px_1px_0px_#000]">
-                  {top1.formattedDuration}
+                  {top1.formattedDuration || top1.formattedTime || formatElapsedDuration(top1.elapsedMs) || '00:00'}
                 </span>
               </div>
             </div>
@@ -238,7 +240,9 @@ export const CompetitionLeaderboardPage: React.FC = () => {
               </div>
               <div className="flex items-center justify-between border-t border-zinc-800 pt-2 font-mono text-xs">
                 <span className="text-zinc-500 font-medium">Record Time:</span>
-                <span className="font-bold text-amber-400">{top3.formattedDuration}</span>
+                <span className="font-bold text-amber-400">
+                  {top3.formattedDuration || top3.formattedTime || formatElapsedDuration(top3.elapsedMs) || '00:00'}
+                </span>
               </div>
             </div>
           ) : (
@@ -437,7 +441,7 @@ export const CompetitionLeaderboardPage: React.FC = () => {
                             {isSolved ? (
                               <span className="inline-flex items-center gap-1.5 text-emerald-400 font-black text-sm">
                                 <Timer className="w-3.5 h-3.5 text-emerald-400" />
-                                <span>{entry.formattedDuration || '00:00'}</span>
+                                <span>{entry.formattedDuration || entry.formattedTime || formatElapsedDuration(entry.elapsedMs) || '00:00'}</span>
                               </span>
                             ) : entry.status === 'IN_PROGRESS' ? (
                               <span className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-amber-950/40 text-amber-400 border border-amber-500/40 text-[11px] font-mono font-bold shadow-[1px_1px_0px_#000]">
