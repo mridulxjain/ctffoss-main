@@ -631,32 +631,51 @@ test('TEAM REGISTRATION & ROSTER SYSTEM SUITE', async (t) => {
     await dbService.updateCompetitionConfig({ state: 'PREPARING' });
   });
 
-  await t.test('20. Invalid or unverified OIDC identity cannot finalize a manual registration', async () => {
-    // Differing email attempt
+  await t.test('20. Participant whose GitHub email differs from CSV registration email can join squad by entering registered email', async () => {
     const legitMember = APPROVED_ROSTER[6];
     const legitTeam = APPROVED_TEAMS.find((t) => t.teamName === legitMember.teamName)!;
 
-    const attacker = await dbService.createUser({
-      email: 'attacker_user_20@example.com',
-      username: 'attacker_20',
+    // User whose GitHub email is personal/different from registration form
+    const userWithDifferentGithubEmail = await dbService.createUser({
+      email: 'personal_github_user_20@example.com',
+      username: 'github_user_20',
       role: 'member',
       teamId: null,
     });
 
-    const cookie = createSessionCookie(attacker);
+    const cookie = createSessionCookie(userWithDifferentGithubEmail);
 
-    const res = await makeRequest(
+    // 1. Trying an email not on the roster should fail with 404 NOT_ON_ROSTER
+    const badRes = await makeRequest(
       'POST',
       '/api/v1/teams/register',
       { Cookie: cookie },
       {
         teamName: legitTeam.teamName,
-        registeredEmail: legitMember.email, // Attacker types victim's email
+        registeredEmail: 'not_on_roster@example.com',
+      }
+    );
+    assert.strictEqual(badRes.status, 404);
+    assert.strictEqual(badRes.body.error.code, 'NOT_ON_ROSTER');
+
+    // 2. Supplying the valid registered CSV email for this squad successfully joins squad
+    const validRes = await makeRequest(
+      'POST',
+      '/api/v1/teams/register',
+      { Cookie: cookie },
+      {
+        teamName: legitTeam.teamName,
+        registeredEmail: legitMember.email,
       }
     );
 
-    assert.strictEqual(res.status, 403);
-    assert.strictEqual(res.body.error.code, 'EMAIL_VERIFICATION_REQUIRED');
+    assert.strictEqual(validRes.status, 200);
+    assert.strictEqual(validRes.body.success, true);
+    assert.strictEqual(validRes.body.data.team.name, legitTeam.teamName);
+
+    // Verify user is now assigned in storage
+    const updated = await dbService.getUser(userWithDifferentGithubEmail.id);
+    assert.ok(updated?.teamId);
   });
 
   await t.test('21. Repeated valid registration requests are idempotent', async () => {

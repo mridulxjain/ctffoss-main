@@ -21,7 +21,9 @@ export const config = {
   frontendUrl: process.env.FRONTEND_URL || 'http://localhost:5173',
   corsOrigins: parsedCorsOrigins,
   cookieSameSite: ((process.env.COOKIE_SAME_SITE as 'lax' | 'none' | 'strict') || 'lax') as 'lax' | 'none' | 'strict',
-  trustProxy: process.env.TRUST_PROXY || ((process.env.NODE_ENV || 'development') === 'production' ? '1' : false),
+  trustProxy: process.env.TRUST_PROXY
+    ? (!isNaN(Number(process.env.TRUST_PROXY)) ? Number(process.env.TRUST_PROXY) : process.env.TRUST_PROXY)
+    : ((process.env.NODE_ENV || 'development') === 'production' ? 1 : false),
   valenfindUrl: process.env.VALENFIND_URL || 'https://ctffoss.vercel.app',
   valenfindChallengeUrl:
     process.env.LOVENTIA_CHALLENGE_URL ||

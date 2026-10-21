@@ -593,12 +593,13 @@ export const ChallengesPage: React.FC = () => {
                   </span>
                   <input
                     id="voucherIdInput"
-                    type="text"
+                    type="password"
+                    autoComplete="off"
                     value={voucherId}
                     onChange={(e) => setVoucherId(e.target.value)}
-                    placeholder="e.g. LOVENTIA-..."
+                    placeholder=""
                     disabled={redeemingVoucher || !isLive}
-                    className="w-full pl-8 pr-4 py-2.5 border-2 border-zinc-700 hover:border-zinc-500 focus:border-amber-400 bg-[#080d16] text-zinc-100 font-mono text-xs font-bold placeholder-zinc-600 shadow-[2px_2px_0px_#000] focus:outline-none transition-all"
+                    className="w-full pl-8 pr-4 py-2.5 border-2 border-zinc-700 hover:border-zinc-500 focus:border-amber-400 bg-[#080d16] text-zinc-100 font-mono text-xs font-bold shadow-[2px_2px_0px_#000] focus:outline-none transition-all"
                   />
                 </div>
               </div>
@@ -616,12 +617,13 @@ export const ChallengesPage: React.FC = () => {
                   </span>
                   <input
                     id="passphraseInput"
-                    type="text"
+                    type="password"
+                    autoComplete="off"
                     value={passphrase}
                     onChange={(e) => setPassphrase(e.target.value)}
-                    placeholder="Discovered passphrase..."
+                    placeholder=""
                     disabled={redeemingVoucher || !isLive}
-                    className="w-full pl-8 pr-4 py-2.5 border-2 border-zinc-700 hover:border-zinc-500 focus:border-amber-400 bg-[#080d16] text-zinc-100 font-mono text-xs font-bold placeholder-zinc-600 shadow-[2px_2px_0px_#000] focus:outline-none transition-all"
+                    className="w-full pl-8 pr-4 py-2.5 border-2 border-zinc-700 hover:border-zinc-500 focus:border-amber-400 bg-[#080d16] text-zinc-100 font-mono text-xs font-bold shadow-[2px_2px_0px_#000] focus:outline-none transition-all"
                   />
                 </div>
               </div>

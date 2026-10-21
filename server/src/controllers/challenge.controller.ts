@@ -71,7 +71,7 @@ export const challengeController = {
     const compConfig = await dbService.getCompetitionConfig();
     try {
       const chal = await dbService.getChallengeDetail(id, teamId, req.user?.role);
-      const isCompetitionChal = chal.isCompetitionChallenge || chal.slug === 'valenfind';
+      const isCompetitionChal = chal.isCompetitionChallenge || chal.slug === 'valenfind' || chal.slug === 'loventia';
       if (isCompetitionChal && compConfig.status === 'PREPARING') {
         res.status(400).json({
           success: false,
@@ -140,7 +140,7 @@ export const challengeController = {
     const compConfig = await dbService.getCompetitionConfig();
     try {
       const chal = await dbService.getChallengeDetail(id, teamId, req.user?.role);
-      const isCompetitionChal = chal.isCompetitionChallenge || chal.slug === 'valenfind';
+      const isCompetitionChal = chal.isCompetitionChallenge || chal.slug === 'valenfind' || chal.slug === 'loventia';
       if (isCompetitionChal && compConfig.status === 'PREPARING') {
         res.status(400).json({
           success: false,

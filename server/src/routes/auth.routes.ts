@@ -2,13 +2,13 @@ import { Router } from 'express';
 import { authController } from '../controllers/auth.controller';
 import { validateBody } from '../middleware/validate';
 import { devLoginSchema } from '../validators/index';
-import { authLimiter, sessionLimiter } from '../middleware/rateLimiter';
+import { loginLimiter, callbackLimiter, authLimiter, sessionLimiter } from '../middleware/rateLimiter';
 
 const router = Router();
 
 // OIDC Authentication Endpoints
-router.get('/login', authLimiter, authController.oidcLogin);
-router.get('/callback', authLimiter, authController.oidcCallback);
+router.get('/login', loginLimiter, authController.oidcLogin);
+router.get('/callback', callbackLimiter, authController.oidcCallback);
 
 // Session State and Logout
 router.get('/me', sessionLimiter, authController.getMe);

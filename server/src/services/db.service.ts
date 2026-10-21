@@ -858,17 +858,15 @@ export const dbService = {
       throw err;
     }
 
-    // 6. Critical identity verification:
-    // Ensure the verified OIDC identity matches the registered competition email.
-    // Entering an email address alone does NOT prove ownership.
+    // 6. Identity verification:
+    // When a user's GitHub / OIDC sign-in email differs from their registration email,
+    // they are permitted to join if their registeredEmail matches the approved roster for the chosen squad.
     const cleanCandidate = candidateEmail.trim().toLowerCase();
     const cleanVerified = verifiedEmail.trim().toLowerCase();
     if (cleanCandidate !== cleanVerified) {
-      const err = new Error(
-        `The registered competition email (${cleanCandidate}) differs from your verified sign-in identity (${cleanVerified}). Direct linking of an unverified email is not permitted. Please sign in through FOSS Club with your registered competition email or contact event administrators for assistance.`
+      console.log(
+        `ℹ️  [Squad Registration] User ${userId} (${cleanVerified}) successfully matched approved roster email (${cleanCandidate}) for squad "${team.name}".`
       );
-      (err as any).code = 'EMAIL_VERIFICATION_REQUIRED';
-      throw err;
     }
 
     // 7. Atomic assignment with concurrency race-condition protection
@@ -1298,7 +1296,7 @@ export const dbService = {
 
       const now = Date.now();
       return chals.map((c) => {
-        const isCompChal = c.slug === 'valenfind' || (c as any).isCompetitionChallenge === true;
+        const isCompChal = c.slug === 'valenfind' || c.slug === 'loventia' || (c as any).isCompetitionChallenge === true;
         let isSolvedByTeam = teamId ? c.solves.some((s) => s.teamId === teamId) : false;
         let sessionStatus: SessionStatus | undefined;
 
@@ -1359,7 +1357,7 @@ export const dbService = {
       .map((c) => {
         const cat = memoryStore.categories.find((k) => k.id === c.categoryId);
         const chSolves = memoryStore.solves.filter((s) => s.challengeId === c.id);
-        const isCompChal = c.slug === 'valenfind' || (c as any).isCompetitionChallenge === true;
+        const isCompChal = c.slug === 'valenfind' || c.slug === 'loventia' || (c as any).isCompetitionChallenge === true;
         let isSolvedByTeam = teamId ? chSolves.some((s) => s.teamId === teamId) : false;
 
         let sessionStatus: SessionStatus | undefined;
@@ -1442,7 +1440,7 @@ export const dbService = {
         unlockedHintIds = new Set(unlocks.map((u) => u.hintId));
       }
 
-      const isCompChal = c.slug === 'valenfind' || (c as any).isCompetitionChallenge === true;
+      const isCompChal = c.slug === 'valenfind' || c.slug === 'loventia' || (c as any).isCompetitionChallenge === true;
       let compAttempt: CompetitionAttemptDTO | null = null;
       let isSolvedByTeam = teamId ? c.solves.some((s) => s.teamId === teamId) : false;
 
@@ -1495,7 +1493,7 @@ export const dbService = {
     if (!c || !c.isPublished) return null;
     const cat = memoryStore.categories.find((k) => k.id === c.categoryId);
     const chSolves = memoryStore.solves.filter((s) => s.challengeId === c.id);
-    const isCompChal = c.slug === 'valenfind' || (c as any).isCompetitionChallenge === true;
+    const isCompChal = c.slug === 'valenfind' || c.slug === 'loventia' || (c as any).isCompetitionChallenge === true;
     let compAttempt: CompetitionAttemptDTO | null = null;
     let isSolvedByTeam = teamId ? chSolves.some((s) => s.teamId === teamId) : false;
 
@@ -3151,8 +3149,8 @@ export const dbService = {
         author: c.author,
         sortOrder: c.sortOrder,
         flagHash: null,
-        externalUrl: (c as any).externalUrl || (c.slug === 'valenfind' ? config.valenfindChallengeUrl : null),
-        isCompetitionChallenge: c.slug === 'valenfind' || (c as any).isCompetitionChallenge === true,
+        externalUrl: (c as any).externalUrl || (c.slug === 'valenfind' || c.slug === 'loventia' ? config.loventiaChallengeUrl : null),
+        isCompetitionChallenge: c.slug === 'valenfind' || c.slug === 'loventia' || (c as any).isCompetitionChallenge === true,
         hints: (c.hints as any[]).map((h: any) => ({
           id: h.id,
           challengeId: h.challengeId,

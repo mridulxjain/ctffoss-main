@@ -14,6 +14,31 @@ interface WindowRecord {
 }
 
 /**
+ * Securely extracts client IP address, prioritizing Vercel's verified edge headers
+ * that cannot be forged by downstream HTTP clients.
+ */
+export function getClientIp(req: Request): string {
+  // 1. Vercel Edge infrastructure verified headers
+  const vercelForwarded = req.headers['x-vercel-forwarded-for'];
+  if (typeof vercelForwarded === 'string' && vercelForwarded.trim()) {
+    return vercelForwarded.split(',')[0].trim();
+  }
+
+  const realIp = req.headers['x-real-ip'];
+  if (typeof realIp === 'string' && realIp.trim()) {
+    return realIp.trim();
+  }
+
+  // 2. Express req.ip (populated via trusted proxy hops)
+  if (req.ip && typeof req.ip === 'string' && req.ip.trim()) {
+    return req.ip.trim();
+  }
+
+  // 3. Fallback to network socket
+  return req.socket?.remoteAddress || 'unknown';
+}
+
+/**
  * Lightweight in-memory sliding window rate limiter for Express.
  * Suitable for single-instance deployments and process-local throttling.
  * Note: In multi-replica deployments, a distributed store (e.g. Redis) is recommended.
@@ -28,9 +53,7 @@ export function createRateLimiter(options: RateLimiterOptions) {
       // Prioritize authenticated team ID, then authenticated user ID, then remote IP
       if (req.user?.teamId) return `team:${req.user.teamId}`;
       if (req.user?.id) return `user:${req.user.id}`;
-      const forwarded = req.headers['x-forwarded-for'];
-      const ip = typeof forwarded === 'string' ? forwarded.split(',')[0].trim() : req.socket.remoteAddress || 'unknown';
-      return `ip:${ip}`;
+      return `ip:${getClientIp(req)}`;
     },
   } = options;
 
@@ -94,12 +117,24 @@ export function createRateLimiter(options: RateLimiterOptions) {
   };
 }
 
-export const authLimiter = createRateLimiter({
+// Rate limiter for OIDC login initiation: max 180 requests per minute to support simultaneous campus Wi-Fi / NAT logins
+export const loginLimiter = createRateLimiter({
   windowMs: 60 * 1000,
-  max: 30,
+  max: 180,
   message: 'Too many authentication attempts. Please slow down and try again shortly.',
   code: 'AUTH_RATE_LIMIT_EXCEEDED',
 });
+
+// Rate limiter for OIDC callback: max 180 requests per minute
+export const callbackLimiter = createRateLimiter({
+  windowMs: 60 * 1000,
+  max: 180,
+  message: 'Too many authentication callbacks. Please slow down and try again shortly.',
+  code: 'AUTH_RATE_LIMIT_EXCEEDED',
+});
+
+// Backward-compatible alias for existing tests / routes
+export const authLimiter = loginLimiter;
 
 export const sessionLimiter = createRateLimiter({
   windowMs: 60 * 1000,
@@ -107,4 +142,5 @@ export const sessionLimiter = createRateLimiter({
   message: 'Too many session status requests. Please slow down.',
   code: 'SESSION_RATE_LIMIT_EXCEEDED',
 });
+
 

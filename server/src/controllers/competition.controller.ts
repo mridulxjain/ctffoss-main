@@ -323,22 +323,27 @@ export const competitionController = {
     try {
       const completedAttempt = await competitionAttemptService.completeAttempt(teamId);
 
-      // Register challenge solve on the challenge board and award points
+      // Register challenge solve on the challenge board if the challenge record exists
       try {
-        const valenfindChal = await dbService.getChallengeBySlug('valenfind');
-        if (valenfindChal) {
-          const alreadySolved = await dbService.hasTeamSolved(teamId, valenfindChal.id);
+        const compChal =
+          (await dbService.getChallengeBySlug('valenfind')) ||
+          (await dbService.getChallengeBySlug('loventia'));
+
+        if (compChal) {
+          const alreadySolved = await dbService.hasTeamSolved(teamId, compChal.id);
           if (!alreadySolved) {
             await dbService.recordSolve({
-              challengeId: valenfindChal.id,
+              challengeId: compChal.id,
               teamId,
               userId: req.user!.id,
-              points: valenfindChal.points,
+              points: compChal.points,
             });
           }
+        } else {
+          console.warn(`⚠️ [Competition Submit] Competition challenge record not found by slug (checked 'valenfind', 'loventia'). Timed attempt completed successfully.`);
         }
-      } catch {
-        // Non-fatal, do not interrupt attempt completion
+      } catch (solveErr: any) {
+        console.error('⚠️ [Competition Submit] Solve record registration error for team:', teamId, solveErr?.message || solveErr);
       }
 
       res.json({
